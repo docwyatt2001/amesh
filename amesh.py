@@ -13,6 +13,7 @@ import subprocess
 import uuid
 import signal
 import _thread
+from threading import RLock
 
 import etcd3
 
@@ -36,14 +37,11 @@ IPCMD = "/bin/ip"
 ETCD_LEASE_TTL = 10
 ETCD_LEASE_REFRESEH_INTERVAL = 5
 
-class NodeState(Enum) :
-    Init = 1
-    Estab = 2
-
 class Node (object) :
     
     def __init__(self, pubkey = None, endpoint = None, allowed_ips = [], 
-                 keepalive = 0, wg_ip = None, groups = [], is_server = True) :
+                 keepalive = 0, wg_ip = None, groups = set(),
+                 is_server = True) :
         self.pubkey = pubkey
         self.endpoint = endpoint
         self.allowed_ips = allowed_ips
@@ -51,8 +49,6 @@ class Node (object) :
         self.wg_ip = wg_ip
         self.groups = groups
         self.is_server = is_server
-
-        self.state = NodeState.Init
 
     def __str__(self) :
         return ("<Node: pubkey={}, endpoint={} groups={}>"
@@ -87,9 +83,9 @@ class Node (object) :
         elif key == "wg_ip" :
             self.wg_ip = value
         elif key == "groups" :
-            self.groups = value.strip().replace(" ", "").split(",")
+            self.groups = set(value.strip().replace(" ", "").split(","))
         elif key == "is_server" :
-            self.is_server = bool(value)
+            self.is_server = True if value == "True" else False
         else :
             raise ValueError("invalid key '{}' for value '{}'"
                              .format(key, value))
@@ -113,12 +109,13 @@ class Node (object) :
                 cmd += [ "persistent-keepalive", str(self.keepalive) ]
             subprocess.check_call(cmd)
 
+            logger.debug("install node: {}".format(" ".join(cmd)))
 
-
-    def remove(self, wg_dev) :
+    def uninstall(self, wg_dev) :
 
         cmd = [ WGCMD, "set", wg_dev, "peer", self.pubkey, "remove" ]
         subprocess.check_call(cmd)
+        logger.debug("uninstall node: {}".format(" ".join(cmd)))
 
 
 
@@ -128,22 +125,25 @@ class Amesh(object) :
 
         logger.info("load config and initialize amesh")
 
-        # XXX: make node_table thread safe (currenty not locked!)
-        self.node_table = {} # hash of nodes, key is pubkey, value is Node
+        # node_table: hash of nodes, key is pubkey, value is Node.
+        # node_table is allocated in refresh_node_table()
+        self.node_table = {}
+        self.node_table_lock = RLock()
 
         # thread-related 
+
+        pubkey = config.get("wireguard", "pubkey")
 
         # Do Not catch exception here.
         self.etcd_endpoint = config.get("amesh", "etcd_endpoint")
         self.etcd_prefix = config.get("amesh", "etcd_prefix")
-        self.etcd_node_id = str(uuid.uuid4())
+        self.etcd_node_id = str(uuid.uuid3(uuid.NAMESPACE_DNS, pubkey))
         self.etcd_lease_id = None # assinged by etcd3.lease()
 
         self.wg_dev = config.get("wireguard", "wg_dev")
         self.wg_port = config.get("wireguard", "wg_port")
         self.prvkey = config.get("wireguard", "prvkey_file")
 
-        pubkey = config.get("wireguard", "pubkey")
         endpoint = config.get("wireguard", "endpoint")
         endpoint = endpoint if endpoint != "None" else None
         is_server = True if config.get("amesh","is_server") == "yes" else False
@@ -151,9 +151,8 @@ class Amesh(object) :
         allowed_ips = config.get("wireguard",
                                  "allowed_ips").replace(" ", "").split(",")
 
-
         wg_ip = config.get("wireguard", "wg_ip")
-        groups = config.get("amesh", "groups").replace(" ", "").split(",")
+        groups = set(config.get("amesh", "groups").replace(" ", "").split(","))
 
         self.node = Node(pubkey = pubkey, endpoint = endpoint,
                          allowed_ips = allowed_ips, groups = groups,
@@ -165,6 +164,7 @@ class Amesh(object) :
             raise ValueError("endpoint and is_server denpend on each other")
 
         logger.info("my node id is {}".format(self.etcd_node_id))
+        logger.info("my pub key is {}".format(self.node.pubkey))
         logger.info("etcd prefix is {}".format(self.etcd_prefix))
 
         
@@ -217,12 +217,13 @@ class Amesh(object) :
                 failed += 1
                 
             if failed > ETCD_LEASE_TTL / ETCD_LEASE_REFRESEH_INTERVAL :
-                logger.error("lease is revoked! start to retry to register")
+                logger.error("lease is revoked! etcd connection is broken." +
+                             "start to retry to register")
                 while True :
                     try :
                         self._lease_allocate()
                         self.register_for_etcd()
-                        self.get_nodelist()
+                        self.refresh_node_table()
                         failed = 0
                         break
                     except :
@@ -236,7 +237,8 @@ class Amesh(object) :
 
         etcd = self.etcd_client()
         self.etcd_lease_id = etcd.lease(ETCD_LEASE_TTL).id
-        logger.info("etcd lease is {}".format(hex(self.etcd_lease_id)))
+        logger.info("allocated etcd lease is {}"
+                    .format(hex(self.etcd_lease_id)))
 
 
     def start_lease_maintainer(self) :
@@ -254,62 +256,85 @@ class Amesh(object) :
             etcd.put(k, v, lease = self.etcd_lease_id)
 
 
+    def _check_group(self, node_a, node_b) :
+
+        if ("any" in (node_a.groups | node_b.groups) or
+            node_a.groups & node_b.groups) :
+            return True
+
+        return False
+        
+
     def _update_node(self, node_id, key, value) :
 
-        if not node_id in self.node_table :
-            self.node_table[node_id]  = Node()
+        with self.node_table_lock :
 
-        self.node_table[node_id].update(key, value)
+            if not node_id in self.node_table :
+                self.node_table[node_id]  = Node()
 
-        try :
-            self.node_table[node_id].install(self.wg_dev, self.node.is_server)
-        except Exception as e :
-            logger.error("failed to install node: {}".format(e))
+            node = self.node_table[node_id]
+            node.update(key, value)
+
+            if self._check_group(self.node, node) :
+                try :
+                    node.install(self.wg_dev, self.node.is_server)
+                                 
+                except Exception as e :
+                    logger.error("failed to install node: {}".format(e))
 
 
     def _remove_node(self, node_id) :
 
-        if node_id in self.node_table :
+        with self.node_table_lock :
+
+            if not node_id in self.node_table :
+                return
+
             node = self.node_table[node_id]
 
             try :
-                if node.pubkey :
-                    if node.endpoint :
-                        self.node.remove(self.wg_dev)
+                if node.pubkey and self._check_group(self.node, node):
+                    node.uninstall(self.wg_dev)
                     del(self.node_table[node_id])
             except Exception as e :
-                logger.error("failed to remove node: {}". format(e))
+                logger.error("failed to uninstall node: {}". format(e))
                 
                 
 
-    def fill_node_table(self) :
+    def refresh_node_table(self) :
 
-        # get node information from etcd, and make self.node_table
-        etcd = self.etcd_client()
-        for value, meta in etcd.get_prefix(self.etcd_prefix) :
+        with self.node_table_lock :
+
+            self.node_table = {}
+
+            # get node information from etcd, and make self.node_table
+            etcd = self.etcd_client()
+            for value, meta in etcd.get_prefix(self.etcd_prefix) :
             
-            # key is PREFIX/NODE_ID/KEY
-            # note that node_id is a randomly created uuid per spawn
-            # XXX: make own exception for parse error?
-            try :
                 prefix, node_id, key = meta.key.decode("utf-8").split("/")
-            
-                if node_id == self.etcd_node_id :
-                    continue
 
-                self._update_node(node_id, key, value.decode("utf-8"))
+                # key is PREFIX/NODE_ID/KEY
+                # note that node_id is a randomly created uuid per spawn
+                # XXX: make own exception for parse error?
+                try :
+                    prefix, node_id, key = meta.key.decode("utf-8").split("/")
+                    if node_id == self.etcd_node_id : continue
 
-            except Exception as e :
-                logger.error("fill_node_tabile failed on '{}': {}"
-                             .format(meta.key.decode("utf-8"), e))
+                    self._update_node(node_id, key, value.decode("utf-8"))
+
+                except Exception as e :
+                    logger.error("fill_node_tabile failed on '{}': {}"
+                                 .format(meta.key.decode("utf-8"), e))
     
-        # install nodes
-        for node in self.node_table.values() :
-            try :
-                node.install(self.wg_dev, self.node.is_server)
-            except Exception as e:
-                logger.error("failed to install route for {} {}"
-                             .format(node, e))
+            # install node information to wg interface
+            for node in self.node_table.values() :
+                if self._check_group(self.node, node) :
+                    try :
+
+                        node.install(self.wg_dev, self.node.is_server)
+                    except Exception as e:
+                        logger.error("failed to install route for {} {}"
+                                     .format(node, e))
 
 
     def watch_node_info(self) :
@@ -342,6 +367,7 @@ class Amesh(object) :
         self.watch_node_info()
 
 
+
 if __name__ == "__main__" :
 
     parser = argparse.ArgumentParser()
@@ -367,12 +393,11 @@ if __name__ == "__main__" :
     config.read(args.config)
 
     amesh = Amesh(config)
-    #signal.signal(signal.SIGINT, amesh.cleanup)
 
     amesh.init_wg_dev()
     amesh.start_lease_maintainer()
     amesh.register_for_etcd()
-    amesh.fill_node_table()
+    amesh.refresh_node_table()
     amesh.start_node_watcher()
 
     
