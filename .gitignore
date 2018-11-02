@@ -1,10 +1,8 @@
 .*.swp
-*.key
 
 build
 dist
 *.egg-info
 
-
-amesh2.conf
-amesh/__pycache__/
+test-conf
+*/__pycache__/

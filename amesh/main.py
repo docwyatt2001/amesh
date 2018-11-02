@@ -45,6 +45,7 @@ def main() :
         "wireguard" : {
             "device" : "wg0",
             "port" : "5280",
+            "address" : "None",
             "prvkey_path" : "private.key",
             "keepalive" : "0",
         },
