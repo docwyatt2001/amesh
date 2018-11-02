@@ -19,13 +19,16 @@ default_logger.propagate = False
 
 class Node(object) :
 
-    def __init__(self, pubkey = None, endpoint = None, allowed_ips = [],
-                 keepalive = 0, groups = set(), logger = None) :
+    def __init__(self, pubkey = None, port = 5281,
+                 endpoint = None, allowed_ips = [], keepalive = 0,
+                 address = None, groups = set(), logger = None) :
 
         self.pubkey = pubkey
+        self.port = port
         self.endpoint = endpoint
         self.allowed_ips = allowed_ips
         self.keepalive = 0
+        self.address = address
         self.groups = groups
         self.logger = logger or default_logger
 
@@ -35,7 +38,7 @@ class Node(object) :
         o = "<Node: pubkey={}, endpoint={}".format(self.pubkey, self.endpoint)
         
         if VERBOSE :
-            o += ", alowed_ips={}".format(",".join(allowed_ips))
+            o += ", alowed_ips={}".format(",".join(self.allowed_ips))
             o += ", keepalive={}".format(self.keepalive)
             o += ", groups={}".format(" ".join(sorted(list(self.groups))))
 
@@ -51,6 +54,8 @@ class Node(object) :
 
         if key == "pubkey" :
             self.pubkey = value
+        elif key == "port":
+            self.port = int(value)
         elif key == "endpoint" :
             self.endpoint = value
         elif key == "allowed_ips" :
@@ -58,11 +63,11 @@ class Node(object) :
                 self.allowed_ips = value.strip().replace(" ", "").split(",")
         elif key == "keepalive" :
             self.keepalive = int(value)
+        elif key == "address" :
+            self.address = value
         elif key == "groups" :
             self.groups = set(value.strip().replace(" ", "").split(","))
-        else :
-            raise ValueError("invalid key '{}' for value '{}'"
-                             .format(key, value))
+
 
     def deserialize(self, kvps) :
 
@@ -81,14 +86,16 @@ class Node(object) :
             self.update(k, v)
 
 
-    def serialize_for_etcd(self, etcd_id, etcd_prefix) :
-        p = "{}/{}".format(etcd_prefix, etcd_id)
+    def serialize_for_etcd(self, etcd_prefix, node_id) :
+        p = "{}/{}".format(etcd_prefix, node_id)
         
         return {
             p + "/pubkey" : self.pubkey,
+            p + "/port" : str(self.port),
             p + "/endpoint" : self.endpoint,
             p + "/allowed_ips" : ",".join(self.allowed_ips),
             p + "/keepalive" : str(self.keepalive),
+            p + "/address" : self.address,
             p + "/groups" : ",".join(self.groups),
         }
 

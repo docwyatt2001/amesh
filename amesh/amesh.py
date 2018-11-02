@@ -61,7 +61,8 @@ class Amesh(object) :
         self.wg_pubkey = config_dict["wireguard"]["pubkey"]
         self.wg_prvkey_path = config_dict["wireguard"]["prvkey_path"]
         self.wg_addr = None
-        self.wg_port = config_dict["wireguard"]["port"]
+        self.wg_port = int(config_dict["wireguard"]["port"])
+        self.groups = set([])
 
         self.etcd_endpoint = config_dict["amesh"]["etcd_endpoint"]         
         self.etcd_prefix = config_dict["amesh"]["etcd_prefix"]
@@ -173,7 +174,7 @@ class Amesh(object) :
             [ IPCMD, "addr", "flush", "dev", self.wg_dev ],
             [ WGCMD, "set", self.wg_dev,
               "private-key",  self.wg_prvkey_path,
-              "listen-port", self.wg_port,
+              "listen-port", str(self.wg_port),
             ]
         ]
 
@@ -201,13 +202,15 @@ class Amesh(object) :
     def etcd_register(self) :
         etcd = self.etcd_client()
         node_self = Node(pubkey = self.wg_pubkey,
+                         port = self.wg_port,
                          endpoint = self.wg_endpoint,
                          allowed_ips = self.allowed_ips,
                          keepalive = self.wg_keepalive,
+                         address = self.wg_addr,
                          groups = self.groups,
                          logger = self.logger)
 
-        d = node_self.serialize_for_etcd(self.node_id, self.etcd_prefix)
+        d = node_self.serialize_for_etcd(self.etcd_prefix, self.node_id)
         for k, v in d.items() :
             etcd.put(k, v, lease = self.etcd_lease.id)
 
@@ -302,7 +305,7 @@ class Amesh(object) :
 
     def process_etcd_kv(self, node_id, key, value, ev_type) :
 
-        self.logger.debug("process key/value: nodei_id={}, key={}, value={}"
+        self.logger.debug("process key/value: node_id={}, key={}, value={}"
                      .format(node_id, key, value))
 
         if node_id == self.node_id :
@@ -324,16 +327,16 @@ class Amesh(object) :
             value = None
 
         try :
-            if key == "wg_address" :
-                self.wg_address = value
+            if key == "address" :
+                self.wg_addr = value
                 configure_wg_dev = True
-            elif key == "wg_port" :
+            elif key == "port" :
                 self.wg_port = int(value)
                 configure_wg_dev = True
-            elif key == "wg_endpoint" :
+            elif key == "endpoint" :
                 self.wg_endpoint = value
                 # nothing to do
-            elif key == "wg_allowed_ips" :
+            elif key == "allowed_ips" :
                 if value == "" :
                     self.allowed_ips = []
                 else :
@@ -355,8 +358,11 @@ class Amesh(object) :
         
         if configure_peers :
             for node in self.node_table.values() :
-                node.uninstall()
-                node.install()
+                try :
+                    node.uninstall(self.wg_dev)
+                except :
+                    pass
+                node.install(self.wg_dev)
 
 
     def update_other(self, node_id, key, value, ev_type) :

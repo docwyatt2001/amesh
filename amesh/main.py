@@ -29,7 +29,7 @@ def main() :
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--debug", action = "store_true",
-                        default = False, help = "enable debug logs")
+                        help = "enable debug logs")
     parser.add_argument("config", help = "amesh config file")
     args = parser.parse_args()
 
