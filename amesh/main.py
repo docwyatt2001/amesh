@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python3
 
 import os
 import sys
@@ -6,12 +6,17 @@ import argparse
 import configparser
 import signal
 
-from amesh import amesh
+if __name__ == "__main__" :
+    import amesh
+else :
+    from amesh import amesh
 
-from logging import getLogger, DEBUG, StreamHandler, Formatter
+
+
+from logging import getLogger, DEBUG, INFO, StreamHandler, Formatter
 from logging.handlers import SysLogHandler
 logger = getLogger(__name__)
-logger.setLevel(DEBUG)
+logger.setLevel(INFO)
 stream = StreamHandler()
 syslog = SysLogHandler(address = "/dev/log")
 syslog.setFormatter(Formatter("amesh: %(message)s"))
@@ -23,8 +28,13 @@ logger.propagate = False
 def main() :
 
     parser = argparse.ArgumentParser()
+    parser.add_argument("-d", "--debug", action = "store_true",
+                        default = False, help = "enable debug logs")
     parser.add_argument("config", help = "amesh config file")
     args = parser.parse_args()
+
+    if args.debug :
+        logger.setLevel(DEBUG)
 
     config = configparser.ConfigParser()
     config.read_dict({
@@ -53,7 +63,7 @@ def main() :
     amesh_process = amesh.Amesh({
         "amesh" : amesh_config,
         "wireguard" : wg_config
-    })
+    }, logger = logger)
 
     def sig_handler(signum, stack) :
         amesh_process.cancel()

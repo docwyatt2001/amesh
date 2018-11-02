@@ -1,6 +1,6 @@
 include MANIFEST.in
 graft etc
+recursive-include etc *
 global-exclude *~
 global-exclude *.py[co]
 global-exclude .gitignore
-recursive-include etc *

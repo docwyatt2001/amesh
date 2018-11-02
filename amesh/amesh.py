@@ -7,35 +7,45 @@ import subprocess
 import threading
 
 import etcd3
-from amesh.node import Node
 
-from amesh.static import (IPCMD, WGCMD,
-                          ETCD_LEASE_LIFETIME, ETCD_LEASE_KEEPALIVE,
-                          ETCD_RECONNECT_INTERVAL)
+if not "amesh." in __name__ :
+    from node import Node
+    from static import (IPCMD, WGCMD,
+                        ETCD_LEASE_LIFETIME,
+                        ETCD_LEASE_KEEPALIVE,
+                        ETCD_RECONNECT_INTERVAL)
+else :
+    from amesh.node import Node
+    from amesh.static import (IPCMD, WGCMD,
+                              ETCD_LEASE_LIFETIME,
+                              ETCD_LEASE_KEEPALIVE,
+                              ETCD_RECONNECT_INTERVAL)
 
-from logging import getLogger, DEBUG, StreamHandler, Formatter
+
+from logging import getLogger, INFO, StreamHandler, Formatter
 from logging.handlers import SysLogHandler
-logger = getLogger(__name__)
-logger.setLevel(DEBUG)
+default_logger = getLogger(__name__)
+default_logger.setLevel(INFO)
 stream = StreamHandler()
 syslog = SysLogHandler(address = "/dev/log")
-syslog.setFormatter(Formatter("amesh: %(message)s"))
-logger.addHandler(stream)
-logger.addHandler(syslog)
-logger.propagate = False
+default_logger.addHandler(stream)
+default_logger.addHandler(syslog)
+default_logger.propagate = False
 
 class Amesh(object) :
 
-    def __init__(self, config_dict) :
+    def __init__(self, config_dict, logger = None) :
 
-        logger.info("Load config and initialize amesh")
+        self.logger = logger or default_logger
+
+        self.logger.info("Load config and initialize amesh")
 
         # node_table: hash of nodes, key is etcd id, value is Node
         self.node_table = {}
 
         self.wg_dev = config_dict["wireguard"]["device"]
         if not "address" in config_dict["wireguard"] :
-            logger.error("address in [wireguard] is not specified")
+            self.logger.error("address in [wireguard] is not specified")
             raise RuntimeError("address in [wireguard] is not specified")
         self.wg_addr = config_dict["wireguard"]["address"]
 
@@ -50,10 +60,10 @@ class Amesh(object) :
         self.wg_keepalive = int(config_dict["wireguard"]["keepalive"])
 
         if not "mode" in config_dict["amesh"] :
-            logger.error("mode does not specified")
+            self.logger.error("mode does not specified")
             raise RuntimeError("mode does not specified")
         if not config_dict["amesh"]["mode"] in ("adhoc", "controlled") :
-            logger.error("invalid mode '{}'"
+            self.logger.error("invalid mode '{}'"
                          .format(config_dict["amesh"]["mode"]))
             raise RuntimeError("invalid mode")
         self.mode = config_dict["amesh"]["mode"]
@@ -83,51 +93,51 @@ class Amesh(object) :
 
         # thread cancel events
         self.th_maintainer = threading.Thread(target = self.etcd_maintainer)
-        self.th_watch = threading.Thread(target = self.etcd_watch)
+        self.th_watcher = threading.Thread(target = self.etcd_watcher)
         self.stop_maintainer = threading.Event()
-        self.stop_watch = threading.Event()
-        self.cancel_watch = None # cancel of etcd3.watch_prefix()
+        self.stop_watcher = threading.Event()
+        self.cancel_watcher = None # cancel of etcd3.watch_prefix()
 
-        logger.debug("mode:           {}".format(self.mode))
-        logger.debug("node_id:        {}".format(self.node_id))
-        logger.debug("etcd endpoint:  {}".format(self.etcd_endpoint))
-        logger.debug("etcd prefix:    {}".format(self.etcd_prefix))
-        logger.debug("wg device:      {}".format(self.wg_dev))
-        logger.debug("wg address:     {}".format(self.wg_addr))
-        logger.debug("wg port:        {}".format(self.wg_port))
-        logger.debug("wg endpoint:    {}".format(self.wg_endpoint))
-        logger.debug("wg prvkey path: {}".format(self.wg_prvkey_path))
-        logger.debug("wg pubkey:      {}".format(self.wg_pubkey))
-        logger.debug("wg keepalive:   {}".format(self.wg_keepalive))
-        logger.debug("wg allowed_ips: {}".format(self.allowed_ips))
-        logger.debug("amesh groups:   {}".format(self.groups))
+        self.logger.debug("mode:           {}".format(self.mode))
+        self.logger.debug("node_id:        {}".format(self.node_id))
+        self.logger.debug("etcd endpoint:  {}".format(self.etcd_endpoint))
+        self.logger.debug("etcd prefix:    {}".format(self.etcd_prefix))
+        self.logger.debug("wg device:      {}".format(self.wg_dev))
+        self.logger.debug("wg address:     {}".format(self.wg_addr))
+        self.logger.debug("wg port:        {}".format(self.wg_port))
+        self.logger.debug("wg endpoint:    {}".format(self.wg_endpoint))
+        self.logger.debug("wg prvkey path: {}".format(self.wg_prvkey_path))
+        self.logger.debug("wg pubkey:      {}".format(self.wg_pubkey))
+        self.logger.debug("wg keepalive:   {}".format(self.wg_keepalive))
+        self.logger.debug("wg allowed_ips: {}".format(self.allowed_ips))
+        self.logger.debug("amesh groups:   {}".format(self.groups))
 
 
     def start(self) :
         self.init_wg_dev()
         if self.mode == "adhoc" :
             self.th_maintainer.start()
-        self.th_watch.start()
+        self.th_watcher.start()
     
     def join(self) :
         if self.mode == "adhoc" :
             self.th_maintainer.join()
-        self.th_watch.join()
+        self.th_watcher.join()
 
     def cancel(self) :
 
-        logger.info("stop amesh")
+        self.logger.info("stopping amesh...")
 
         if self.mode == "adhoc" :
             self.stop_maintainer.set()
 
-        self.stop_watch.set()
-        if self.cancel_watch :
-            self.cancel_watch()
+        self.stop_watcher.set()
+        if self.cancel_watcher :
+            self.cancel_watcher()
 
     def init_wg_dev(self) :
 
-        logger.info("set up wireguard interface {}".format(self.wg_dev))
+        self.logger.info("set up wireguard interface {}".format(self.wg_dev))
 
         cmds = [
             [ IPCMD, "link", "add", self.wg_dev, "type", "wireguard" ],
@@ -155,7 +165,8 @@ class Amesh(object) :
     def etcd_lease_allocate(self) :
         etcd = self.etcd_client()
         self.etcd_lease = etcd.lease(ETCD_LEASE_LIFETIME)
-        logger.debug("allocated etcd lease is {:x}".format(self.etcd_lease.id))
+        self.logger.debug("allocated etcd lease is {:x}"
+                          .format(self.etcd_lease.id))
 
 
     def etcd_register(self) :
@@ -164,7 +175,8 @@ class Amesh(object) :
                          endpoint = self.wg_endpoint,
                          allowed_ips = self.allowed_ips,
                          keepalive = self.wg_keepalive,
-                         groups = self.groups)
+                         groups = self.groups,
+                         logger = self.logger)
 
         d = node_self.serialize_for_etcd(self.node_id, self.etcd_prefix)
         for k, v in d.items() :
@@ -172,6 +184,8 @@ class Amesh(object) :
 
 
     def etcd_maintainer(self) :
+
+        connected = True
 
         while True :
             try :
@@ -182,6 +196,10 @@ class Amesh(object) :
                 self.etcd_register()
                 cnt = 0
                 
+                connected = True
+                self.logger.info("etcd maintainer conncted to {}"
+                                 .format(self.etcd_endpoint))
+
                 while True :
                     time.sleep(1)
 
@@ -194,16 +212,21 @@ class Amesh(object) :
                         cnt = 0
 
             except etcd3.exceptions.Etcd3Exception as e:
-                logger.error("etcd maintainer failed: {}".format(e.__class__))
+                if conncted :
+                    self.logger.error("etcd maintainer failed: {}"
+                                      .format(e.__class__))
+                    connected = False
                 time.sleep(1)
 
 
-    def etcd_watch(self) :
+    def etcd_watcher(self) :
+
+        connected = True
 
         while True :
 
             try :
-                if self.stop_watch.is_set() :
+                if self.stop_watcher.is_set() :
                     return
 
                 # initialize node_table
@@ -214,7 +237,11 @@ class Amesh(object) :
                 wtach_prefix = "{}/".format(self.etcd_prefix)
 
                 event_iter, cancel = etcd.watch_prefix(wtach_prefix)
-                self.cancel_watch = cancel
+                self.cancel_watcher = cancel
+
+                connected = True
+                self.logger.info("etcd watch connected to {}"
+                                 .format(self.etcd_endpoint))
 
                 for ev in event_iter :
                     prefix, node_id, key = ev.key.decode("utf-8").split("/")
@@ -226,8 +253,11 @@ class Amesh(object) :
                     self.process_etcd_kv(node_id, key, value, ev_type)
 
             except etcd3.exceptions.Etcd3Exception as e:
-                self.cancel_watch = None
-                logger.error("etcd watch failed: {}".format(e.__class__))
+                if connected :
+                    self.logger.error("etcd watch failed: {}"
+                                      .format(e.__class__))
+                    connected = False
+                self.cancel_watcher = None
                 time.sleep(1)
                 
 
@@ -243,7 +273,7 @@ class Amesh(object) :
 
     def process_etcd_kv(self, node_id, key, value, ev_type) :
 
-        logger.debug("process key/value: nodei_id={}, key={}, value={}"
+        self.logger.debug("process key/value: nodei_id={}, key={}, value={}"
                      .format(node_id, key, value))
 
         if node_id == self.node_id :
@@ -271,14 +301,14 @@ class Amesh(object) :
             try :
                 self.update_node(node_id, key, value)
             except Exception as e :
-                logger.error("failed to update {}: {}".format(node_id, e))
+                self.logger.error("failed to update {}: {}".format(node_id, e))
                           
 
         elif ev_type is "delete" :
             try :
                 self.remove_node(node_id)
             except Exception as e :
-                logger.error("failed to remove {}: {}".format(node_id, e))
+                self.logger.error("failed to remove {}: {}".format(node_id, e))
 
 
     def check_group(self, group_a, group_b) :
@@ -286,16 +316,18 @@ class Amesh(object) :
             return True
         return False
 
+
     def update_node(self, node_id, key, value) :
 
         if not node_id in self.node_table :
-            self.node_table[node_id] = Node()
+            self.node_table[node_id] = Node(logger = self.logger)
 
         node = self.node_table[node_id]
         node.update(key, value)
 
         if self.check_group(self.groups, node.groups) :
             node.install(self.wg_dev)
+
 
     def remove_node(self, node_id) :
 

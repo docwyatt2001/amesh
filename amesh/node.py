@@ -2,29 +2,32 @@
 
 import subprocess
 
-from amesh.static import IPCMD, WGCMD, VERBOSE
+if not "amesh." in __name__ :
+    from static import IPCMD, WGCMD, VERBOSE
+else :
+    from amesh.static import IPCMD, WGCMD, VERBOSE
 
-from logging import getLogger, DEBUG, StreamHandler, Formatter
+from logging import getLogger, INFO, StreamHandler, Formatter
 from logging.handlers import SysLogHandler
-logger = getLogger(__name__)
-logger.setLevel(DEBUG)
+default_logger = getLogger(__name__)
+default_logger.setLevel(INFO)
 stream = StreamHandler()
 syslog = SysLogHandler(address = "/dev/log")
-syslog.setFormatter(Formatter("amesh: %(message)s"))
-logger.addHandler(stream)
-logger.addHandler(syslog)
-logger.propagate = False
+default_logger.addHandler(stream)
+default_logger.addHandler(syslog)
+default_logger.propagate = False
 
 class Node(object) :
 
     def __init__(self, pubkey = None, endpoint = None, allowed_ips = [],
-                 keepalive = 0, groups = set()) :
+                 keepalive = 0, groups = set(), logger = None) :
 
         self.pubkey = pubkey
         self.endpoint = endpoint
         self.allowed_ips = allowed_ips
         self.keepalive = 0
         self.groups = groups
+        self.logger = logger or default_logger
 
 
     def __str__(self) :
@@ -104,13 +107,16 @@ class Node(object) :
             cmd += [ "persistent-keepalive", str(self.keepalive) ]
         subprocess.check_call(cmd)
 
-        logger.debug("install node: {}".format(" ".join(cmd)))
+        if self.logger :
+            self.logger.debug("install node: {}".format(" ".join(cmd)))
 
 
     def uninstall(self, wg_dev) :
 
         cmd = [ WGCMD, "set", wg_dev, "peer", self.pubkey, "remove" ]
         subprocess.check_call(cmd)
-        logger.debug("uninstall node: {}".format(" ".join(cmd)))
+
+        if self.logger :
+            self.logger.debug("uninstall node: {}".format(" ".join(cmd)))
 
 
