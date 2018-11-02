@@ -1,0 +1,6 @@
+include MANIFEST.in
+graft etc
+global-exclude *~
+global-exclude *.py[co]
+global-exclude .gitignore
+recursive-include etc *

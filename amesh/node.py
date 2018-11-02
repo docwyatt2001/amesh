@@ -2,7 +2,7 @@
 
 import subprocess
 
-from static import IPCMD, WGCMD, VERBOSE
+from amesh.static import IPCMD, WGCMD, VERBOSE
 
 from logging import getLogger, DEBUG, StreamHandler, Formatter
 from logging.handlers import SysLogHandler

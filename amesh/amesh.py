@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 
 import os
 import time
@@ -8,11 +7,11 @@ import subprocess
 import threading
 
 import etcd3
-import amesh_node
+from amesh.node import Node
 
-from static import (IPCMD, WGCMD,
-                    ETCD_LEASE_LIFETIME, ETCD_LEASE_KEEPALIVE,
-                    ETCD_RECONNECT_INTERVAL)
+from amesh.static import (IPCMD, WGCMD,
+                          ETCD_LEASE_LIFETIME, ETCD_LEASE_KEEPALIVE,
+                          ETCD_RECONNECT_INTERVAL)
 
 from logging import getLogger, DEBUG, StreamHandler, Formatter
 from logging.handlers import SysLogHandler
@@ -161,11 +160,11 @@ class Amesh(object) :
 
     def etcd_register(self) :
         etcd = self.etcd_client()
-        node_self = amesh_node.Node(pubkey = self.wg_pubkey,
-                                    endpoint = self.wg_endpoint,
-                                    allowed_ips = self.allowed_ips,
-                                    keepalive = self.wg_keepalive,
-                                    groups = self.groups)
+        node_self = Node(pubkey = self.wg_pubkey,
+                         endpoint = self.wg_endpoint,
+                         allowed_ips = self.allowed_ips,
+                         keepalive = self.wg_keepalive,
+                         groups = self.groups)
 
         d = node_self.serialize_for_etcd(self.node_id, self.etcd_prefix)
         for k, v in d.items() :
@@ -290,7 +289,7 @@ class Amesh(object) :
     def update_node(self, node_id, key, value) :
 
         if not node_id in self.node_table :
-            self.node_table[node_id] = amesh_node.Node()
+            self.node_table[node_id] = Node()
 
         node = self.node_table[node_id]
         node.update(key, value)

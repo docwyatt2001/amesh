@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 
 import os
 import sys
@@ -6,7 +6,7 @@ import argparse
 import configparser
 import signal
 
-import amesh
+from amesh import amesh
 
 from logging import getLogger, DEBUG, StreamHandler, Formatter
 from logging.handlers import SysLogHandler
@@ -20,9 +20,7 @@ logger.addHandler(syslog)
 logger.propagate = False
 
 
-    
-
-if __name__ == "__main__" :
+def main() :
 
     parser = argparse.ArgumentParser()
     parser.add_argument("config", help = "amesh config file")
@@ -43,20 +41,28 @@ if __name__ == "__main__" :
     })
 
     
+    if not os.path.exists(args.config) :
+        logger.error("config file {} does not exist".format(args.config))
+        sys.exit(1)
+
     config.read(args.config)
     amesh_config = dict(config.items())["amesh"]
     wg_config = dict(config.items())["wireguard"]
 
     # Start Ameseh
-    amesh = amesh.Amesh({
+    amesh_process = amesh.Amesh({
         "amesh" : amesh_config,
         "wireguard" : wg_config
     })
 
     def sig_handler(signum, stack) :
-        amesh.cancel()
+        amesh_process.cancel()
     signal.signal(signal.SIGINT, sig_handler)
 
 
-    amesh.start()
-    amesh.join()
+    amesh_process.start()
+    amesh_process.join()
+
+
+if __name__ == "__main__" :
+    main()
