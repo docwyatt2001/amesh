@@ -4,6 +4,7 @@ import os
 import sys
 import argparse
 import configparser
+import signal
 
 import amesh
 
@@ -19,6 +20,8 @@ logger.addHandler(syslog)
 logger.propagate = False
 
 
+    
+
 if __name__ == "__main__" :
 
     parser = argparse.ArgumentParser()
@@ -27,16 +30,16 @@ if __name__ == "__main__" :
 
     config = configparser.ConfigParser()
     config.read_dict({
+        "amesh" : {
+            "etcd_endpoint" : "127.0.0.1:2379",
+            "etcd_prefix" : "amesh",
+        },
         "wireguard" : {
             "device" : "wg0",
             "port" : "5280",
             "prvkey_path" : "private.key",
             "keepalive" : "0",
         },
-        "amesh" : {
-            "etcd_endpoint" : "127.0.0.1:2379",
-            "etcd_prefix" : "amesh",
-        }
     })
 
     
@@ -50,6 +53,10 @@ if __name__ == "__main__" :
         "wireguard" : wg_config
     })
 
+    def sig_handler(signum, stack) :
+        amesh.cancel()
+    signal.signal(signal.SIGINT, sig_handler)
 
-    amesh.init_wg_dev()
-    amesh.etcd_watch()
+
+    amesh.start()
+    amesh.join()

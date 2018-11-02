@@ -1,3 +1,4 @@
 
 *.key
 amesh2.conf
+amesh/__pycache__/

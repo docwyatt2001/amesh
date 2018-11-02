@@ -5,11 +5,14 @@ import time
 import uuid
 import logging
 import subprocess
+import threading
 
 import etcd3
 import amesh_node
 
-from static import IPCMD, WGCMD
+from static import (IPCMD, WGCMD,
+                    ETCD_LEASE_LIFETIME, ETCD_LEASE_KEEPALIVE,
+                    ETCD_RECONNECT_INTERVAL)
 
 from logging import getLogger, DEBUG, StreamHandler, Formatter
 from logging.handlers import SysLogHandler
@@ -47,6 +50,15 @@ class Amesh(object) :
         self.wg_pubkey = config_dict["wireguard"]["pubkey"]
         self.wg_keepalive = int(config_dict["wireguard"]["keepalive"])
 
+        if not "mode" in config_dict["amesh"] :
+            logger.error("mode does not specified")
+            raise RuntimeError("mode does not specified")
+        if not config_dict["amesh"]["mode"] in ("adhoc", "controlled") :
+            logger.error("invalid mode '{}'"
+                         .format(config_dict["amesh"]["mode"]))
+            raise RuntimeError("invalid mode")
+        self.mode = config_dict["amesh"]["mode"]
+
         self.etcd_endpoint = config_dict["amesh"]["etcd_endpoint"] 
         self.etcd_prefix = config_dict["amesh"]["etcd_prefix"]
         if "node_id" in config_dict["amesh"] :
@@ -67,7 +79,17 @@ class Amesh(object) :
         else :
             self.groups = set()
             
+        # etcd lease for adhoc mode
+        self.etcd_lease = None
 
+        # thread cancel events
+        self.th_maintainer = threading.Thread(target = self.etcd_maintainer)
+        self.th_watch = threading.Thread(target = self.etcd_watch)
+        self.stop_maintainer = threading.Event()
+        self.stop_watch = threading.Event()
+        self.cancel_watch = None # cancel of etcd3.watch_prefix()
+
+        logger.debug("mode:           {}".format(self.mode))
         logger.debug("node_id:        {}".format(self.node_id))
         logger.debug("etcd endpoint:  {}".format(self.etcd_endpoint))
         logger.debug("etcd prefix:    {}".format(self.etcd_prefix))
@@ -81,6 +103,28 @@ class Amesh(object) :
         logger.debug("wg allowed_ips: {}".format(self.allowed_ips))
         logger.debug("amesh groups:   {}".format(self.groups))
 
+
+    def start(self) :
+        self.init_wg_dev()
+        if self.mode == "adhoc" :
+            self.th_maintainer.start()
+        self.th_watch.start()
+    
+    def join(self) :
+        if self.mode == "adhoc" :
+            self.th_maintainer.join()
+        self.th_watch.join()
+
+    def cancel(self) :
+
+        logger.info("stop amesh")
+
+        if self.mode == "adhoc" :
+            self.stop_maintainer.set()
+
+        self.stop_watch.set()
+        if self.cancel_watch :
+            self.cancel_watch()
 
     def init_wg_dev(self) :
 
@@ -103,9 +147,16 @@ class Amesh(object) :
             # Do not check exception. when fail, then crash the process.
             subprocess.check_call(cmd)
 
+
     def etcd_client(self) :
         host, port = self.etcd_endpoint.split(":")
         return etcd3.client(host = host, port = port)
+
+
+    def etcd_lease_allocate(self) :
+        etcd = self.etcd_client()
+        self.etcd_lease = etcd.lease(ETCD_LEASE_LIFETIME)
+        logger.debug("allocated etcd lease is {:x}".format(self.etcd_lease.id))
 
 
     def etcd_register(self) :
@@ -118,21 +169,53 @@ class Amesh(object) :
 
         d = node_self.serialize_for_etcd(self.node_id, self.etcd_prefix)
         for k, v in d.items() :
-            etcd.put(k, v)
+            etcd.put(k, v, lease = self.etcd_lease.id)
+
+
+    def etcd_maintainer(self) :
+
+        while True :
+            try :
+                if self.stop_maintainer.is_set() :
+                    return
+
+                self.etcd_lease_allocate()
+                self.etcd_register()
+                cnt = 0
+                
+                while True :
+                    time.sleep(1)
+
+                    if self.stop_maintainer.is_set() :
+                        return
+                        
+                    cnt += 1
+                    if cnt % ETCD_LEASE_KEEPALIVE == 0:
+                        self.etcd_lease.refresh()
+                        cnt = 0
+
+            except etcd3.exceptions.Etcd3Exception as e:
+                logger.error("etcd maintainer failed: {}".format(e.__class__))
+                time.sleep(1)
+
 
     def etcd_watch(self) :
 
         while True :
 
             try :
+                if self.stop_watch.is_set() :
+                    return
+
+                # initialize node_table
                 self.node_table = {}
                 self.etcd_obtain()
-                self.etcd_register()
 
                 etcd = self.etcd_client()
                 wtach_prefix = "{}/".format(self.etcd_prefix)
 
                 event_iter, cancel = etcd.watch_prefix(wtach_prefix)
+                self.cancel_watch = cancel
 
                 for ev in event_iter :
                     prefix, node_id, key = ev.key.decode("utf-8").split("/")
@@ -143,8 +226,9 @@ class Amesh(object) :
                         ev_type = "delete"
                     self.process_etcd_kv(node_id, key, value, ev_type)
 
-            except etcd3.exceptions.ConnectionFailedError as e:
-                logger.error("etcd connection failed".format(e))
+            except etcd3.exceptions.Etcd3Exception as e:
+                self.cancel_watch = None
+                logger.error("etcd watch failed: {}".format(e.__class__))
                 time.sleep(1)
                 
 
@@ -156,7 +240,6 @@ class Amesh(object) :
             preifx, node_id, key = meta.key.decode("utf-8").split("/")
             value = value.decode("utf-8")
             self.process_etcd_kv(node_id, key, value, "put")
-
 
 
     def process_etcd_kv(self, node_id, key, value, ev_type) :
@@ -220,5 +303,8 @@ class Amesh(object) :
         if not node_id in self.node_table :
             return
 
+        node = self.node_table[node_id]
+
         if self.check_group(self.groups, node.groups) :
             node.uninstall(self.wg_dev)
+        del(self.node_table[node_id])
