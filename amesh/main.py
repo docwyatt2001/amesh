@@ -6,9 +6,9 @@ import argparse
 import configparser
 import signal
 
-if __name__ == "__main__" :
+if __name__ == "__main__":
     import amesh
-else :
+else:
     from amesh import amesh
 
 
@@ -25,7 +25,7 @@ logger.addHandler(syslog)
 logger.propagate = False
 
 
-def main() :
+def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--debug", action = "store_true",
@@ -33,27 +33,27 @@ def main() :
     parser.add_argument("config", help = "amesh config file")
     args = parser.parse_args()
 
-    if args.debug :
+    if args.debug:
         logger.setLevel(DEBUG)
 
     config = configparser.ConfigParser()
     config.read_dict({
-        "amesh" : {
-            "etcd_endpoint" : "127.0.0.1:2379",
-            "etcd_prefix" : "amesh",
+        "amesh": {
+            "etcd_endpoint": "127.0.0.1:2379",
+            "etcd_prefix": "amesh",
         },
-        "wireguard" : {
-            "device" : "wg0",
-            "port" : "5280",
-            "address" : "None",
-            "prvkey_path" : "private.key",
-            "keepalive" : "0",
+        "wireguard": {
+            "device": "wg0",
+            "port": "5280",
+            "address": "None",
+            "prvkey_path": "private.key",
+            "keepalive": "0",
         },
     })
 
     
-    if not os.path.exists(args.config) :
-        logger.error("config file {} does not exist".format(args.config))
+    if not os.path.exists(args.config):
+        logger.error("config file %s does not exist", args.config)
         sys.exit(1)
 
     config.read(args.config)
@@ -62,11 +62,11 @@ def main() :
 
     # Start Ameseh
     amesh_process = amesh.Amesh({
-        "amesh" : amesh_config,
-        "wireguard" : wg_config
+        "amesh": amesh_config,
+        "wireguard": wg_config
     }, logger = logger)
 
-    def sig_handler(signum, stack) :
+    def sig_handler(signum, stack):
         amesh_process.cancel()
     signal.signal(signal.SIGINT, sig_handler)
 
@@ -75,5 +75,5 @@ def main() :
     amesh_process.join()
 
 
-if __name__ == "__main__" :
+if __name__ == "__main__":
     main()
