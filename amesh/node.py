@@ -19,10 +19,12 @@ default_logger.propagate = False
 
 class Node(object) :
 
-    def __init__(self, pubkey = None, port = 5281,
+    def __init__(self, 
+                 dev = "wg0", pubkey = None, port = 5281,
                  endpoint = None, allowed_ips = [], keepalive = 0,
                  address = None, groups = set(), logger = None) :
 
+        self.dev = dev
         self.pubkey = pubkey
         self.port = port
         self.endpoint = endpoint
@@ -52,7 +54,9 @@ class Node(object) :
         if value == "None" :
             value = None
 
-        if key == "pubkey" :
+        if key == "dev" :
+            self.dev = value
+        elif key == "pubkey" :
             self.pubkey = value
         elif key == "port":
             self.port = int(value)
@@ -90,6 +94,7 @@ class Node(object) :
         p = "{}/{}".format(etcd_prefix, node_id)
         
         return {
+            p + "/dev" : self.dev,
             p + "/pubkey" : self.pubkey,
             p + "/port" : str(self.port),
             p + "/endpoint" : self.endpoint,
@@ -105,25 +110,50 @@ class Node(object) :
         if not self.pubkey :
             return
 
-        cmd = [ WGCMD, "set", wg_dev, "peer", self.pubkey ]
+        cmds = []
+
+        wgcmd = [ WGCMD, "set", wg_dev, "peer", self.pubkey ]
         if self.endpoint :
-            cmd += [ "endpoint", self.endpoint ]
+            wgcmd += [ "endpoint", self.endpoint ]
         if self.allowed_ips :
-            cmd += [ "allowed-ips", ",".join(self.allowed_ips) ]
+            wgcmd += [ "allowed-ips", ",".join(self.allowed_ips) ]
         if self.keepalive :
-            cmd += [ "persistent-keepalive", str(self.keepalive) ]
-        subprocess.check_call(cmd)
+            wgcmd += [ "persistent-keepalive", str(self.keepalive) ]
+
+        cmds.append(wgcmd)
+
+        for allowed_ip in self.allowed_ips :
+            cmds.append([
+                IPCMD, "route", "add", "to", allowed_ip, "dev", wg_dev,
+            ])
+
+        for cmd in cmds :
+            subprocess.check_call(cmd)
 
         if self.logger :
-            self.logger.debug("install node: {}".format(" ".join(cmd)))
-
+            self.logger.debug("install node: {}"
+                              .format(", ".join(map(lambda x: " ".join(x),
+                                                    cmds))))
 
     def uninstall(self, wg_dev) :
 
-        cmd = [ WGCMD, "set", wg_dev, "peer", self.pubkey, "remove" ]
-        subprocess.check_call(cmd)
+        cmds = []
+
+        wgcmd = [ WGCMD, "set", wg_dev, "peer", self.pubkey, "remove" ]
+        cmds.append(wgcmd)
+
+        for allowed_ip in self.allowed_ips :
+            cmds.append([
+                IPCMD, "route", "del", "to", allowed_ip,
+            ])
+
+
+        for cmd in cmds :
+            subprocess.check_call(cmd)
 
         if self.logger :
-            self.logger.debug("uninstall node: {}".format(" ".join(cmd)))
+            self.logger.debug("uninstall node: {}"
+                              .format(", ".join(map(lambda x: " ".join(x),
+                                                    cmds))))
 
 

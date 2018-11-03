@@ -12,14 +12,12 @@ if not "amesh." in __name__ :
     from node import Node
     from static import (IPCMD, WGCMD,
                         ETCD_LEASE_LIFETIME,
-                        ETCD_LEASE_KEEPALIVE,
-                        ETCD_RECONNECT_INTERVAL)
+                        ETCD_LEASE_KEEPALIVE)
 else :
     from amesh.node import Node
     from amesh.static import (IPCMD, WGCMD,
                               ETCD_LEASE_LIFETIME,
-                              ETCD_LEASE_KEEPALIVE,
-                              ETCD_RECONNECT_INTERVAL)
+                              ETCD_LEASE_KEEPALIVE)
 
 
 from logging import getLogger, INFO, StreamHandler, Formatter
@@ -34,7 +32,7 @@ default_logger.propagate = False
 
 class Amesh(object) :
 
-    def __init__(self, config_dict, logger = None) :
+    def __init__(self, cnf, logger = None) :
 
         self.logger = logger or default_logger
 
@@ -44,61 +42,56 @@ class Amesh(object) :
         self.node_table = {}
 
         # mode
-        if not "mode" in config_dict["amesh"] :
+        if not "mode" in cnf["amesh"] :
             err = "mode does not specified"
             self.logger.error(err)
             raise RuntimeError(err)
-        if not config_dict["amesh"]["mode"] in ("adhoc", "controlled") :
-            err = "invalid mode '{}'".format(config_dict["amesh"]["mode"])
+        if not cnf["amesh"]["mode"] in ("adhoc", "controlled") :
+            err = "invalid mode '{}'".format(cnf["amesh"]["mode"])
             self.logger.error(err)
             raise RuntimeError(err)
-        self.mode = config_dict["amesh"]["mode"]
+        self.mode = cnf["amesh"]["mode"]
 
+        # etcd parameters
+        self.etcd_endpoint = cnf["amesh"]["etcd_endpoint"]         
+        self.etcd_prefix = cnf["amesh"]["etcd_prefix"]
 
-        # parameters in both adhoc and controlled modes
-        # wg_addr (None) is needed for init_wg_dev()
-        self.wg_dev = config_dict["wireguard"]["device"]
-        self.wg_pubkey = config_dict["wireguard"]["pubkey"]
-        self.wg_prvkey_path = config_dict["wireguard"]["prvkey_path"]
-        self.wg_addr = None
-        self.wg_port = int(config_dict["wireguard"]["port"])
-        self.groups = set([])
+        # private key file
+        self.wg_prvkey_path = cnf["wireguard"]["prvkey_path"]
 
-        self.etcd_endpoint = config_dict["amesh"]["etcd_endpoint"]         
-        self.etcd_prefix = config_dict["amesh"]["etcd_prefix"]
-        if "node_id" in config_dict["amesh"] :
-            self.node_id = config_dict["amesh"]["node_id"]
+        # self node parameteres
+        self.node = Node()
+        self.node.update("dev", cnf["wireguard"]["device"])
+        self.node.update("pubkey", cnf["wireguard"]["pubkey"])
+        self.node.update("port", cnf["wireguard"]["port"])
+
+        if "node_id" in cnf["amesh"] :
+            self.node_id = cnf["amesh"]["node_id"]
         else :
-            self.node_id = str(uuid.uuid3(uuid.NAMESPACE_DNS, self.wg_pubkey))
+            self.node_id = str(uuid.uuid3(uuid.NAMESPACE_DNS,
+                                          self.node.pubkey))
 
 
         # parameters in only adhoc mode
         if self.mode == "adhoc" :
-            if not "address" in config_dict["wireguard"] :
+            if not "address" in cnf["wireguard"] :
                 err = "address in [wireguard] is not specified"
                 self.logger.error(err)
                 raise RuntimeError(err)
-            self.wg_addr = config_dict["wireguard"]["address"]
+            self.node.update("address", cnf["wireguard"]["address"])
 
-            if "endpoint" in config_dict["wireguard"]:
-                self.wg_endpoint = config_dict["wireguard"]["endpoint"]
-            else :
-                self.wg_endpoint = None
+            if "endpoint" in cnf["wireguard"]:
+                self.node.update("endpoint", cnf["wireguard"]["endpoint"])
 
-            self.wg_keepalive = int(config_dict["wireguard"]["keepalive"])
+            self.node.update("keepalive", cnf["wireguard"]["keepalive"])
 
+            if "allowed_ips" in cnf["wireguard"] :
+                self.node.update("allowed_ips",
+                                 cnf["wireguard"]["allowed_ips"])
 
-            if "allowed_ips" in config_dict["wireguard"] :
-                self.allowed_ips = config_dict["wireguard"]["allowed_ips"]\
-                    .replace(" ", "").split(",")
-            else :
-                self.allowed_ips = []
+            if "groups" in cnf["amesh"] :
+                self.node.update("groups", cnf["amesh"]["groups"])
 
-            if "groups" in config_dict["amesh"] :
-                self.groups = set(config_dict["amesh"]["groups"]
-                                  .replace(" ", "").split(","))
-            else :
-                self.groups = set()
             
         # etcd lease for adhoc mode
         self.etcd_lease = None
@@ -114,17 +107,17 @@ class Amesh(object) :
         self.logger.debug("node_id:        {}".format(self.node_id))
         self.logger.debug("etcd endpoint:  {}".format(self.etcd_endpoint))
         self.logger.debug("etcd prefix:    {}".format(self.etcd_prefix))
-        self.logger.debug("wg device:      {}".format(self.wg_dev))
+        self.logger.debug("wg device:      {}".format(self.node.dev))
         self.logger.debug("wg prvkey path: {}".format(self.wg_prvkey_path))
-        self.logger.debug("wg pubkey:      {}".format(self.wg_pubkey))
+        self.logger.debug("wg pubkey:      {}".format(self.node.pubkey))
 
         if self.mode == "adhoc" :
-            self.logger.debug("wg address:     {}".format(self.wg_addr))
-            self.logger.debug("wg port:        {}".format(self.wg_port))
-            self.logger.debug("wg endpoint:    {}".format(self.wg_endpoint))
-            self.logger.debug("wg keepalive:   {}".format(self.wg_keepalive))
-            self.logger.debug("wg allowed_ips: {}".format(self.allowed_ips))
-            self.logger.debug("amesh groups:   {}".format(self.groups))
+            self.logger.debug("wg address:     {}".format(self.node.address))
+            self.logger.debug("wg port:        {}".format(self.node.port))
+            self.logger.debug("wg endpoint:    {}".format(self.node.endpoint))
+            self.logger.debug("wg keepalive:   {}".format(self.node.keepalive))
+            self.logger.debug("wg allowed_ips: {}".format(self.node.allowed_ips))
+            self.logger.debug("amesh groups:   {}".format(self.node.groups))
 
 
     def start(self) :
@@ -137,6 +130,14 @@ class Amesh(object) :
         if self.mode == "adhoc" :
             self.th_maintainer.join()
         self.th_watcher.join()
+
+        self.logger.info("uninstsall routes...")
+        for node in self.node_table.values() :
+            try :
+                node.uninstall(self.node.dev)
+            except Exception as e:
+                self.logger.debug(e)
+            
 
     def cancel(self) :
 
@@ -151,7 +152,7 @@ class Amesh(object) :
 
     def init_wg_dev(self) :
 
-        self.logger.info("set up wireguard interface {}".format(self.wg_dev))
+        self.logger.info("set up wireguard interface {}".format(self.node.dev))
 
         cmds = []
 
@@ -165,22 +166,22 @@ class Amesh(object) :
             raise RuntimeError(err)
             
 
-        if not os.path.exists("/sys/class/net/{}".format(self.wg_dev)) :
-            cmds.append([ IPCMD, "link", "add", self.wg_dev,
+        if not os.path.exists("/sys/class/net/{}".format(self.node.dev)) :
+            cmds.append([ IPCMD, "link", "add", self.node.dev,
                           "type", "wireguard" ],)
 
         cmds += [
-            [ IPCMD, "link", "set", "dev", self.wg_dev, "up" ],
-            [ IPCMD, "addr", "flush", "dev", self.wg_dev ],
-            [ WGCMD, "set", self.wg_dev,
+            [ IPCMD, "link", "set", "dev", self.node.dev, "up" ],
+            [ IPCMD, "addr", "flush", "dev", self.node.dev ],
+            [ WGCMD, "set", self.node.dev,
               "private-key",  self.wg_prvkey_path,
-              "listen-port", str(self.wg_port),
+              "listen-port", str(self.node.port),
             ]
         ]
 
-        if self.wg_addr :
-            cmds.append([ IPCMD, "addr", "add", "dev", self.wg_dev,
-                          self.wg_addr ])
+        if self.node.address :
+            cmds.append([ IPCMD, "addr", "add", "dev", self.node.dev,
+                          self.node.address ])
 
         for cmd in cmds :
             # Do not check exception. when fail, then crash the process.
@@ -201,16 +202,7 @@ class Amesh(object) :
 
     def etcd_register(self) :
         etcd = self.etcd_client()
-        node_self = Node(pubkey = self.wg_pubkey,
-                         port = self.wg_port,
-                         endpoint = self.wg_endpoint,
-                         allowed_ips = self.allowed_ips,
-                         keepalive = self.wg_keepalive,
-                         address = self.wg_addr,
-                         groups = self.groups,
-                         logger = self.logger)
-
-        d = node_self.serialize_for_etcd(self.etcd_prefix, self.node_id)
+        d = self.node.serialize_for_etcd(self.etcd_prefix, self.node_id)
         for k, v in d.items() :
             etcd.put(k, v, lease = self.etcd_lease.id)
 
@@ -327,25 +319,14 @@ class Amesh(object) :
             value = None
 
         try :
-            if key == "address" :
-                self.wg_addr = value
+            self.node.update(key, value)
+
+            if key in ("address", "port") :
                 configure_wg_dev = True
-            elif key == "port" :
-                self.wg_port = int(value)
+            elif key in ("groups") :
+                configure_peers = True
+            elif key in ("dev") :
                 configure_wg_dev = True
-            elif key == "endpoint" :
-                self.wg_endpoint = value
-                # nothing to do
-            elif key == "allowed_ips" :
-                if value == "" :
-                    self.allowed_ips = []
-                else :
-                    self.allowed_ips = value.strip()\
-                                            .replace(" ", "").split(",")
-                # XXX: how to use allowed_ips?
-                # install static route to peer wg_addr ?
-            elif key == "groups" :
-                self.groups = set(value.replace(" ", "").split(","))
                 configure_peers = True
 
         except Exception as e :
@@ -359,10 +340,10 @@ class Amesh(object) :
         if configure_peers :
             for node in self.node_table.values() :
                 try :
-                    node.uninstall(self.wg_dev)
+                    node.uninstall(self.node.dev)
                 except :
                     pass
-                node.install(self.wg_dev)
+                node.install(self.node.dev)
 
 
     def update_other(self, node_id, key, value, ev_type) :
@@ -398,8 +379,8 @@ class Amesh(object) :
         node = self.node_table[node_id]
         node.update(key, value)
 
-        if self.check_group(self.groups, node.groups) :
-            node.install(self.wg_dev)
+        if self.check_group(self.node.groups, node.groups) :
+            node.install(self.node.dev)
 
 
     def remove_node(self, node_id) :
@@ -409,6 +390,6 @@ class Amesh(object) :
 
         node = self.node_table[node_id]
 
-        if self.check_group(self.groups, node.groups) :
-            node.uninstall(self.wg_dev)
+        if self.check_group(self.node.groups, node.groups) :
+            node.uninstall(self.node.dev)
         del(self.node_table[node_id])
