@@ -50,7 +50,7 @@ class AmeshControl(object):
             if section == "amesh":
                 continue
 
-            if (not "node_id" in config[section] or
+            if (not "node_id" in config[section] and
                 not "pubkey" in config[section]):
                 err = "node_id or pubkey is reuqired in [{}]".format(section)
 
@@ -124,8 +124,9 @@ def main():
     parser.add_argument("-r", "--remove", action = "store_true",
                         help = "remove nodes not in config file")
     parser.add_argument("config", help = "amesh control config file")
-    parser.add_argument("command", choices = ["put", "get"],
-                        help = "command 'put', 'get'")
+    parser.add_argument("command", choices = ["put", "get", "update"],
+                        nargs = '?', help = "command")
+    #XXX: make command uses subparser
     args = parser.parse_args()
 
     if args.debug:

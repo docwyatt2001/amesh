@@ -71,25 +71,21 @@ class Amesh(object):
                                           self.node.pubkey))
 
 
-        # parameters in only adhoc mode
-        if self.mode == "adhoc":
-            if not "address" in cnf["wireguard"]:
-                err = "address in [wireguard] is not specified"
-                self.logger.error(err)
-                raise RuntimeError(err)
+        # parameters in adhoc mode
+        if "address" in cnf["wireguard"]:
             self.node.update("address", cnf["wireguard"]["address"])
 
-            if "endpoint" in cnf["wireguard"]:
-                self.node.update("endpoint", cnf["wireguard"]["endpoint"])
+        if "endpoint" in cnf["wireguard"]:
+            self.node.update("endpoint", cnf["wireguard"]["endpoint"])
 
+        if "keepalive" in cnf["wireguard"]:
             self.node.update("keepalive", cnf["wireguard"]["keepalive"])
 
-            if "allowed_ips" in cnf["wireguard"]:
-                self.node.update("allowed_ips",
-                                 cnf["wireguard"]["allowed_ips"])
+        if "allowed_ips" in cnf["wireguard"]:
+            self.node.update("allowed_ips", cnf["wireguard"]["allowed_ips"])
 
-            if "groups" in cnf["amesh"]:
-                self.node.update("groups", cnf["amesh"]["groups"])
+        if "groups" in cnf["amesh"]:
+            self.node.update("groups", cnf["amesh"]["groups"])
 
 
         # etcd lease for adhoc mode

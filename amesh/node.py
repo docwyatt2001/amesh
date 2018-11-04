@@ -96,7 +96,10 @@ class Node(object):
             changed = True
             self.address = value
         elif key == "groups":
-            groups = set(value.strip().replace(" ", "").split(","))
+            if not value == "":
+                groups = set(value.strip().replace(" ", "").split(","))
+            else:
+                groups = set()
             if self.groups != groups:
                 changed = True
                 self.groups = groups
