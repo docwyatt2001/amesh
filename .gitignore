@@ -3,6 +3,10 @@
 build
 dist
 *.egg-info
+.eggs
+
+AUTHORS
+ChangeLog
 
 test-conf
 */__pycache__/
