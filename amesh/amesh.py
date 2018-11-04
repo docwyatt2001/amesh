@@ -317,7 +317,7 @@ class Amesh(object):
             value = None
 
         try:
-            self.node.update(key, value)
+            changed = self.node.update(key, value)
 
             if key in ("address", "port"):
                 configure_wg_dev = True
@@ -330,13 +330,12 @@ class Amesh(object):
         except Exception as e:
             self.logger.error("failed to update self: key=%s, value=%s: %s",
                               key, value, e)
-
             return
 
-        if configure_wg_dev:
+        if changed and configure_wg_dev:
             self.init_wg_dev()
 
-        if configure_peers:
+        if changed and configure_peers:
             for node in self.node_table.values():
                 try:
                     node.uninstall(self.node.dev)
@@ -375,9 +374,9 @@ class Amesh(object):
             self.node_table[node_id] = Node(logger = self.logger)
 
         node = self.node_table[node_id]
-        node.update(key, value)
+        changed = node.update(key, value)
 
-        if self.check_group(self.node.groups, node.groups):
+        if changed and self.check_group(self.node.groups, node.groups):
             node.install(self.node.dev)
 
 

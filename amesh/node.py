@@ -21,7 +21,7 @@ class Node(object):
 
     def __init__(self,
                  dev = "wg0", pubkey = None, port = 5281,
-                 endpoint = None, allowed_ips = [], keepalive = 0,
+                 endpoint = None, allowed_ips = set(), keepalive = 0,
                  address = None, groups = set(), logger = None):
 
         self.dev = dev
@@ -48,29 +48,60 @@ class Node(object):
 
         return  o
 
+    def format(self, indent = 4):
+        lines = [
+            "pubkey:      {}".format(self.pubkey),
+            "dev:         {}".format(self.dev),
+            "port:        {}".format(self.port),
+            "endpoint:    {}".format(self.endpoint),
+            "allowed_ips: {}".format(" ".join(self.allowed_ips)),
+            "keepalive:   {}".format(self.keepalive),
+            "address:     {}".format(self.address),
+            "groups:      {}".format(" ".join(self.groups))
+        ]
+        return "\n".join(map(lambda x: " " * indent + x, lines))
+
 
     def update(self, key, value):
+
+        changed = False
 
         if value == "None":
             value = None
 
-        if key == "dev":
+        if key == "dev" and self.dev != value:
+            changed = True
             self.dev = value
-        elif key == "pubkey":
+        elif key == "pubkey" and self.pubkey != value:
+            changed = True
             self.pubkey = value
-        elif key == "port":
+        elif key == "port" and self.port != int(value):
+            changed = True
             self.port = int(value)
-        elif key == "endpoint":
+        elif key == "endpoint" and self.endpoint != value:
+            changed = True
             self.endpoint = value
         elif key == "allowed_ips":
             if not value == "":
-                self.allowed_ips = value.strip().replace(" ", "").split(",")
-        elif key == "keepalive":
+                ips = set(value.strip().replace(" ", "").split(","))
+            else :
+                ips = set()
+            if self.allowed_ips != ips:
+                changed = True
+                self.allowed_ips = ips
+        elif key == "keepalive" and self.keepalive != int(value):
+            changed = True
             self.keepalive = int(value)
-        elif key == "address":
+        elif key == "address" and self.address != value:
+            changed = True
             self.address = value
         elif key == "groups":
-            self.groups = set(value.strip().replace(" ", "").split(","))
+            groups = set(value.strip().replace(" ", "").split(","))
+            if self.groups != groups:
+                changed = True
+                self.groups = groups
+
+        return changed
 
 
     def deserialize(self, kvps):

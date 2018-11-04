@@ -17,7 +17,6 @@ logger = getLogger(__name__)
 logger.setLevel(INFO)
 stream = StreamHandler()
 syslog = SysLogHandler(address = "/dev/log")
-syslog.setFormatter(Formatter("amesh: %(message)s"))
 logger.addHandler(stream)
 logger.addHandler(syslog)
 logger.propagate = False
@@ -96,6 +95,25 @@ class AmeshControl(object):
                     # this node is not in the config, so remove
                     etcd.delete(meta.key.decode("utf-8"))
 
+    def get(self):
+
+        etcd = self.etcd_client()
+        node_table = {}
+
+        for value, meta in etcd.get_prefix(self.etcd_prefix):
+            _, node_id, key = meta.key.decode("utf-8").split("/")
+            value = value.decode("utf-8")
+
+            if not node_id in node_table:
+                node_table[node_id] = Node()
+
+            node = node_table[node_id]
+            node.update(key, value)
+
+        for node_id in sorted(node_table.keys()):
+            print("{}".format(node_id))
+            print(node_table[node_id].format(indent = 4))
+            print("")
 
 
 def main():
@@ -104,8 +122,10 @@ def main():
     parser.add_argument("-d", "--debug", action = "store_true",
                         help = "enable debug logs")
     parser.add_argument("-r", "--remove", action = "store_true",
-                        help = "remove nodes in etcd not in config file")
+                        help = "remove nodes not in config file")
     parser.add_argument("config", help = "amesh control config file")
+    parser.add_argument("command", choices = ["put", "get"],
+                        help = "command 'put', 'get'")
     args = parser.parse_args()
 
     if args.debug:
@@ -120,7 +140,11 @@ def main():
         raise RuntimeError(err)
 
     ac = AmeshControl(args.config, remove = args.remove)
-    ac.put()
+
+    if args.command == "put":
+        ac.put()
+    elif args.command == "get":
+        ac.get()
 
 
 if __name__ == "__main__":
