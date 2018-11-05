@@ -51,6 +51,7 @@ def main():
             "device": "wg0",
             "port": "51280",
             "address": "None",
+            "pubkey_puth": "/usr/local/etc/amesh/public.key",
             "prvkey_path": "/usr/local/etc/amesh/private.key",
             "keepalive": "0",
         },

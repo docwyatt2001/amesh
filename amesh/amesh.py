@@ -61,15 +61,17 @@ class Amesh(object):
         # self node parameteres
         self.node = Node()
         self.node.update("dev", cnf["wireguard"]["device"])
-        self.node.update("pubkey", cnf["wireguard"]["pubkey"])
+
         self.node.update("port", cnf["wireguard"]["port"])
+        with open(cnf["wireguard"]["pubkey_path"], "r") as f:
+            pubkey = f.read().strip()
+        self.node.update("pubkey", pubkey)
 
         if "node_id" in cnf["amesh"]:
             self.node_id = cnf["amesh"]["node_id"]
         else:
             self.node_id = str(uuid.uuid3(uuid.NAMESPACE_DNS,
                                           self.node.pubkey))
-
 
         # parameters in adhoc mode
         if "address" in cnf["wireguard"]:
