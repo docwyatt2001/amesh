@@ -27,11 +27,15 @@ logger.propagate = False
 
 def main():
 
+    default_config_path = "/usr/local/etc/amesh/amesh.conf"
+
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--debug", action = "store_true",
                         help = "enable debug logs")
-    parser.add_argument("config", type = argparse.FileType("r"),
-                        help = "amesh config file")
+    parser.add_argument("-c", "--config", type = argparse.FileType("r"),
+                        default = default_config_path,
+                        help = "amesh config file. default is " +
+                        default_config_path)
     args = parser.parse_args()
 
     if args.debug:
@@ -53,7 +57,7 @@ def main():
     })
 
     
-    config.read(args.config)
+    config.readfp(args.config)
     amesh_config = dict(config.items())["amesh"]
     wg_config = dict(config.items())["wireguard"]
 

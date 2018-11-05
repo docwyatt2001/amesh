@@ -156,10 +156,7 @@ class Amesh(object):
             f = open(self.wg_prvkey_path, "r")
             f.close()
         except Exception as e:
-            err = "failed to read {}: {}".format(self.wg_prvkey_path, e)
-            self.logger.error(err)
-            raise RuntimeError(err)
-
+            self.logger.error(e)
 
         if not os.path.exists("/sys/class/net/{}".format(self.node.dev)):
             cmds.append([ IPCMD, "link", "add", self.node.dev,

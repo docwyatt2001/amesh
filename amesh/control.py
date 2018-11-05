@@ -167,14 +167,16 @@ class AmeshControl(object):
 
 def main():
 
+    default_config_path = "/usr/local/etc/amesh/amesh-control.conf"
+
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--debug", action = "store_true",
                         help = "enable debug logs")
     parser.add_argument("-c", "--config",
-                        default = ["/usr/local/etc/amesh/amesh-control.conf"],
+                        default = [default_config_path],
                         action = "append",
                         help = "amesh control config file. " +
-                        "default /usr/local/etc/amesh/amesh-control.conf. " +
+                        default_config_path + ". "
                         "multiple config files are allowed.")
 
     cmd_parsers = parser.add_subparsers(title = "subcommands",
