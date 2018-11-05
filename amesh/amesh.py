@@ -378,8 +378,8 @@ class Amesh(object):
             return
 
         node = self.node_table[node_id]
+        del self.node_table[node_id]
 
         if self.check_group(self.node.groups, node.groups):
             node.uninstall(self.node.dev)
 
-        del self.node_table[node_id]
