@@ -20,7 +20,7 @@ default_logger.propagate = False
 class Node(object):
 
     def __init__(self,
-                 dev = "wg0", pubkey = None, port = 5281,
+                 dev = None, pubkey = None, port = 5281,
                  endpoint = None, allowed_ips = set(), keepalive = 0,
                  address = None, groups = set(), logger = None):
 
@@ -64,11 +64,11 @@ class Node(object):
 
 
     def is_present(self):
-        return (self.dev and self.pubkey)
+        return (self.dev and self.port)
 
     def make_absent(self):
         self.dev = None
-        self.pubkey = None
+        self.port = 0
 
     def update(self, key, value):
 
@@ -121,6 +121,10 @@ class Node(object):
             if self.groups != groups:
                 changed = True
                 self.groups = groups
+
+        """
+        DO NOT etcd_endpoint, etcd_prefix, dev, update pubkey, and private key
+        """
 
         return changed
 

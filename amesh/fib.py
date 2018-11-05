@@ -160,6 +160,12 @@ class Fib(object):
                                           logger = self.logger))
 
 
+    def __str__(self):
+        return ("<" +
+                " ".join(map(str, list(self.peers))) + " " +
+                " ".join(map(str, list(self.routes))) +
+                ">")
+
     def check_group(self, node):
         return ("any" in self.self_node.groups | node.groups or
                 self.self_node.groups & node.groups)
@@ -189,5 +195,9 @@ class Fib(object):
 
 
     def uninstall(self):
-        map(lambda x: x.uninstall(), self.peers)
-        map(lambda x: x.uninstall(), self.routes)
+
+        for peer in self.peers:
+            peer.uninstall()
+
+        for route in self.routes:
+            route.uninstall()

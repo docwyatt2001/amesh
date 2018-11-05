@@ -42,6 +42,9 @@ class Amesh(object):
         # node_table: hash of nodes, key is etcd id, value is Node
         self.node_table = {}
 
+        # self node parameteres
+        self.node = Node()
+
         # mode
         if not "mode" in cnf["amesh"]:
             err = "mode does not specified"
@@ -60,36 +63,39 @@ class Amesh(object):
         # private key file
         self.wg_prvkey_path = cnf["wireguard"]["prvkey_path"]
 
-        # self node parameteres
-        self.node = Node()
-        self.node.update("dev", cnf["wireguard"]["device"])
-
-        self.node.update("port", cnf["wireguard"]["port"])
+        # public key file
         with open(cnf["wireguard"]["pubkey_path"], "r") as f:
             pubkey = f.read().strip()
         self.node.update("pubkey", pubkey)
 
+        # node id is specified or generated from pubkey
         if "node_id" in cnf["amesh"]:
             self.node_id = cnf["amesh"]["node_id"]
         else:
             self.node_id = str(uuid.uuid3(uuid.NAMESPACE_DNS,
                                           self.node.pubkey))
 
+
         # parameters in adhoc mode
-        if "address" in cnf["wireguard"]:
-            self.node.update("address", cnf["wireguard"]["address"])
+        if self.mode == "adhoc":
+            self.node.update("dev", cnf["wireguard"]["device"])
+            self.node.update("port", cnf["wireguard"]["port"])
 
-        if "endpoint" in cnf["wireguard"]:
-            self.node.update("endpoint", cnf["wireguard"]["endpoint"])
+            if "address" in cnf["wireguard"]:
+                self.node.update("address", cnf["wireguard"]["address"])
 
-        if "keepalive" in cnf["wireguard"]:
-            self.node.update("keepalive", cnf["wireguard"]["keepalive"])
+            if "endpoint" in cnf["wireguard"]:
+                self.node.update("endpoint", cnf["wireguard"]["endpoint"])
 
-        if "allowed_ips" in cnf["wireguard"]:
-            self.node.update("allowed_ips", cnf["wireguard"]["allowed_ips"])
+            if "keepalive" in cnf["wireguard"]:
+                self.node.update("keepalive", cnf["wireguard"]["keepalive"])
 
-        if "groups" in cnf["amesh"]:
-            self.node.update("groups", cnf["amesh"]["groups"])
+            if "allowed_ips" in cnf["wireguard"]:
+                self.node.update("allowed_ips",
+                                 cnf["wireguard"]["allowed_ips"])
+
+            if "groups" in cnf["amesh"]:
+                self.node.update("groups", cnf["amesh"]["groups"])
 
 
         # etcd lease for adhoc mode
@@ -124,8 +130,8 @@ class Amesh(object):
 
 
     def start(self):
-        self.init_wg_dev()
         if self.mode == "adhoc":
+            self.init_wg_dev()
             self.th_maintainer.start()
         self.th_watcher.start()
 
@@ -292,8 +298,8 @@ class Amesh(object):
 
     def process_etcd_kv(self, node_id, key, value, ev_type):
 
-        self.logger.debug("process key/value: node_id=%s, key=%s, value=%s",
-                          node_id, key, value)
+        self.logger.debug("k/v: ev_type=%s, node_id=%s, key=%s, value=%s",
+                          ev_type, node_id, key, value)
 
         if node_id == self.node_id:
             self.update_self(key, value, ev_type)
@@ -306,29 +312,20 @@ class Amesh(object):
         if self.mode != "controlled":
             return
 
+        if ev_type == "delete":
+            return self.remove_self(key, value)
+
         configure_wg_dev = False
         configure_peers = False
-
-        # in controlled mode, update self parameters
-        if value == "None":
-            value = None
-
-        # if delete, remove myself
-        if ev_type == "delete":
-            if self.node.is_present():
-                # self node is now removed. uninstall fib.
-                self.remove_self()
-                self.fib.uninstall()
-            return
 
         # update myself
         changed = self.node.update(key, value)
 
-        if key in ("address", "port", "endpoint"):
+        if key in ("address", "endpoint"):
             configure_wg_dev = True
         elif key in ("groups"):
             configure_peers = True
-        elif key in ("dev", "pubkey"):
+        elif key in ("dev", "pubkey", "port"):
             configure_wg_dev = True
             configure_peers = True
 
@@ -351,12 +348,10 @@ class Amesh(object):
         elif ev_type == "delete":
             changed = self.remove_node(node_id)
 
-        if changed:
+        if self.node.is_present() and changed:
             new_fib = Fib(self.node, self.node_table, logger = self.logger)
-
             new_fib.update_diff(self.fib)
             self.fib = new_fib
-
 
 
     def update_node(self, node_id, key, value):
@@ -380,5 +375,14 @@ class Amesh(object):
 
         return changed
 
-    def remove_self(self) :
-        self.node.make_absent
+
+    def remove_self(self, key, value) :
+
+        if not self.node.is_present():
+            return
+
+        self.logger.info("my id is removed. make me absent and uninstall Fib.")
+
+        self.fib.uninstall()
+        self.fib = Fib(self.node, {}, logger = self.logger)
+        self.node.make_absent()

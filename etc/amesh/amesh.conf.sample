@@ -19,7 +19,6 @@ mode		= adhoc
 #
 # node_id is a unique identifier each amesh node has. If node_id is
 # not configured, amesh uses UUID generated from its public key.
-#
 node_id		= amesh-node1
 
 #### etcd_endpoint: etcd endpoint URL.
@@ -32,7 +31,7 @@ etcd_prefix	= amesh
 #
 # amesh installs peers and allowed-ips as routes when self and a peer
 # belong the same group, or either has the specific group "any". This
-# option is optional and overwritable in controlled mode.
+# is used in only adhoc mode.
 groups		= group1, group2
 
 
@@ -44,18 +43,18 @@ groups		= group1, group2
 
 #### device: wireugard device name
 #
-# This is optional and overwritable in controlled mode.
+# This is used in only adhoc mode.
 device		= wg0
 
 #### address: IPv4 address that wireguard device has.
 #
 # amesh configures this address on the specified wireguard device
-# "device". This is optional and overwritable in controlled mode.
+# "device". This is used in only adhoc mode.
 address		= 10.0.0.1/24
 
 #### port: Port number on witch wireguard listens.
 #
-# This is optional and overwritable in controlled mode.
+# This is used in only adhoc mode.
 port		= 51280
 
 #### endpoint: Wireguard endpoint
@@ -63,13 +62,13 @@ port		= 51280
 # If endpoint is configured, amesh works as a server (other peers try
 # to connect using the endpoint). If not configured, amesh works as a
 # client (other peers does not initiate connections to this node).
-# This is optional and overwritable in controlled mode.
+# This is used in only adhoc mode.
 endpoint	= 192.168.0.1:51280
 
 #### pubkey_path: Wireguard pulic key file
 #
 # This option is mandatory on adhoc. In controlled mode, pubkey is
-# mandatory for generating node id (if not specififed).
+# mandatory for generating node id if node_id is not specififed.
 pubkey_path	= /usr/local/etc/amesh/public.key
 
 #### prvkey_path: Wireguard private key file
@@ -81,5 +80,5 @@ prvkey_path	= /usr/local/etc/amesh/private.key
 #
 # Other peers install these allowed-ips as routing table etnries to
 # wireguard device. This is optional and overwritable in controlled
-# mode. We recommend to add 'address' assigned to wg device.
+# mode. This is used in only adhoc mode.
 allowed_ips	= 10.1.0.1/32, 10.1.2.0/24
