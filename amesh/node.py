@@ -48,6 +48,7 @@ class Node(object):
 
         return  o
 
+
     def format(self, indent = 4):
         lines = [
             "pubkey:      {}".format(self.pubkey),
@@ -139,41 +140,3 @@ class Node(object):
         }
 
 
-    def install(self, wg_dev):
-
-        if not self.pubkey:
-            return
-
-        cmds = []
-
-        wgcmd = [ WGCMD, "set", wg_dev, "peer", self.pubkey ]
-        if self.endpoint:
-            wgcmd += [ "endpoint", self.endpoint ]
-        if self.allowed_ips:
-            wgcmd += [ "allowed-ips", ",".join(self.allowed_ips) ]
-        if self.keepalive:
-            wgcmd += [ "persistent-keepalive", str(self.keepalive) ]
-
-        cmds.append(wgcmd)
-
-        for cmd in cmds:
-            subprocess.check_call(cmd)
-
-        if self.logger:
-            self.logger.debug("install node: %s",
-                              ", ".join(map(lambda x: " ".join(x), cmds)))
-
-
-    def uninstall(self, wg_dev):
-
-        cmds = []
-
-        wgcmd = [ WGCMD, "set", wg_dev, "peer", self.pubkey, "remove" ]
-        cmds.append(wgcmd)
-
-        for cmd in cmds:
-            subprocess.check_call(cmd)
-
-        if self.logger:
-            self.logger.debug("uninstall node: %s",
-                              ", ".join(map(lambda x: " ".join(x), cmds)))

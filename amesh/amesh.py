@@ -9,11 +9,13 @@ import etcd3
 
 if not "amesh." in __name__:
     from node import Node
+    from fib import Fib
     from static import (IPCMD, WGCMD,
                         ETCD_LEASE_LIFETIME,
                         ETCD_LEASE_KEEPALIVE)
 else:
     from amesh.node import Node
+    from amesh.fib import Fib
     from amesh.static import (IPCMD, WGCMD,
                               ETCD_LEASE_LIFETIME,
                               ETCD_LEASE_KEEPALIVE)
@@ -93,6 +95,10 @@ class Amesh(object):
         # etcd lease for adhoc mode
         self.etcd_lease = None
 
+        # initialize Fib
+        self.fib = Fib(self.node, {}, logger = self.logger)
+
+
         # thread cancel events
         self.th_maintainer = threading.Thread(target = self.etcd_maintainer)
         self.th_watcher = threading.Thread(target = self.etcd_watcher)
@@ -129,11 +135,7 @@ class Amesh(object):
         self.th_watcher.join()
 
         self.logger.info("uninstall routes...")
-        for node in self.node_table.values():
-            try:
-                node.uninstall(self.node.dev)
-            except Exception as e:
-                self.logger.debug(e)
+        self.fib.uninstall()
 
 
     def cancel(self):
@@ -331,33 +333,27 @@ class Amesh(object):
             self.init_wg_dev()
 
         if changed and configure_peers:
-            for node in self.node_table.values():
-                try:
-                    node.uninstall(self.node.dev)
-                except:
-                    pass
-                node.install(self.node.dev)
+            new_fib = Fib(self.node, self.node_table, logger = logger)
+            new_fib.update_diff(self.fib)
+            self.fib = new_fib
 
 
     def update_other(self, node_id, key, value, ev_type):
 
+        changed = False
+
         if ev_type == "put":
-            try:
-                self.update_node(node_id, key, value)
-            except Exception as e:
-                self.logger.error("failed to update %s: %s", node_id, e)
+            changed = self.update_node(node_id, key, value)
 
         elif ev_type == "delete":
-            try:
-                self.remove_node(node_id)
-            except Exception as e:
-                self.logger.error("failed to remove %s: %s", node_id, e)
+            changed = self.remove_node(node_id)
 
+        if changed:
+            new_fib = Fib(self.node, self.node_table, logger = self.logger)
 
-    def check_group(self, group_a, group_b):
-        if "any" in group_a | group_b or group_a & group_b:
-            return True
-        return False
+            new_fib.update_diff(self.fib)
+            self.fib = new_fib
+
 
 
     def update_node(self, node_id, key, value):
@@ -367,19 +363,16 @@ class Amesh(object):
 
         node = self.node_table[node_id]
         changed = node.update(key, value)
-
-        if changed and self.check_group(self.node.groups, node.groups):
-            node.install(self.node.dev)
+        return changed
 
 
     def remove_node(self, node_id):
 
         if not node_id in self.node_table:
-            return
+            changed = False
+        else :
+            node = self.node_table[node_id]
+            del self.node_table[node_id]
+            changed = True
 
-        node = self.node_table[node_id]
-        del self.node_table[node_id]
-
-        if self.check_group(self.node.groups, node.groups):
-            node.uninstall(self.node.dev)
-
+        return changed
