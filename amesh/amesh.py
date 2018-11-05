@@ -333,7 +333,7 @@ class Amesh(object):
             self.init_wg_dev()
 
         if changed and configure_peers:
-            new_fib = Fib(self.node, self.node_table, logger = logger)
+            new_fib = Fib(self.node, self.node_table, logger = self.logger)
             new_fib.update_diff(self.fib)
             self.fib = new_fib
 

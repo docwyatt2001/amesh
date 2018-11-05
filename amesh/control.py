@@ -120,7 +120,7 @@ class AmeshControl(object):
 
             d = node.serialize_for_etcd(self.etcd_prefix, node_id)
             for k, v in d.items():
-                etcd.put(k, v)
+                etcd.put(k, str(v))
 
         print("Put {} nodes. ({}).".format(len(put_nodes),
                                            " and ".join(sorted(put_nodes))))
