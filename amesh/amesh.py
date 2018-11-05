@@ -342,9 +342,6 @@ class Amesh(object):
 
     def update_other(self, node_id, key, value, ev_type):
 
-        if node_id == self.node_id:
-            self.update_self(key, value)
-
         if ev_type == "put":
             try:
                 self.update_node(node_id, key, value)
@@ -373,6 +370,7 @@ class Amesh(object):
         changed = node.update(key, value)
 
         if changed and self.check_group(self.node.groups, node.groups):
+            node.uninstall(self.node.dev)
             node.install(self.node.dev)
 
 
