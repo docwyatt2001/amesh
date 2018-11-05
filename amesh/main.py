@@ -30,7 +30,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-d", "--debug", action = "store_true",
                         help = "enable debug logs")
-    parser.add_argument("config", help = "amesh config file")
+    parser.add_argument("config", type = argparse.FileType("r"),
+                        help = "amesh config file")
     args = parser.parse_args()
 
     if args.debug:
@@ -44,18 +45,14 @@ def main():
         },
         "wireguard": {
             "device": "wg0",
-            "port": "5280",
+            "port": "51280",
             "address": "None",
-            "prvkey_path": "private.key",
+            "prvkey_path": "/usr/local/etc/amesh/private.key",
             "keepalive": "0",
         },
     })
 
     
-    if not os.path.exists(args.config):
-        logger.error("config file %s does not exist", args.config)
-        sys.exit(1)
-
     config.read(args.config)
     amesh_config = dict(config.items())["amesh"]
     wg_config = dict(config.items())["wireguard"]

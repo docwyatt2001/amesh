@@ -315,7 +315,7 @@ class Amesh(object):
         try:
             changed = self.node.update(key, value)
 
-            if key in ("address", "port"):
+            if key in ("address", "port", "endpoint"):
                 configure_wg_dev = True
             elif key in ("groups"):
                 configure_peers = True

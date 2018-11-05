@@ -54,10 +54,10 @@ class Node(object):
             "dev:         {}".format(self.dev),
             "port:        {}".format(self.port),
             "endpoint:    {}".format(self.endpoint),
-            "allowed_ips: {}".format(" ".join(self.allowed_ips)),
+            "allowed_ips: {}".format(", ".join(self.allowed_ips)),
             "keepalive:   {}".format(self.keepalive),
             "address:     {}".format(self.address),
-            "groups:      {}".format(" ".join(self.groups))
+            "groups:      {}".format(", ".join(self.groups))
         ]
         return "\n".join(map(lambda x: " " * indent + x, lines))
 
