@@ -1,11 +1,11 @@
 
-# Amesh: A wireguard mesh control plane
+# Amesh: a wireguard mesh control plane
 
 ## What is this
 
 Amesh is a control plane for [Wiregaurd](https://www.wireguard.com/).
 Amesh constructs a mesh-like topology using wiregaurd as a data plane
-and etcd as a control plane.
+and etcd as a distributed configuration repositry.
 
 
 ## Install
