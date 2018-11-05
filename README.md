@@ -18,6 +18,9 @@ and etcd as a distributed configuration repositry.
 ## Quick Start
 
 ```
+# install etcd
+% sudo apt install etcd
+
 % cd /usr/local/etc/amesh
 % cp amesh.conf.sample amesh.conf
 % amesh -h
