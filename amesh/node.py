@@ -156,11 +156,6 @@ class Node(object):
 
         cmds.append(wgcmd)
 
-        for allowed_ip in self.allowed_ips:
-            cmds.append([
-                IPCMD, "route", "add", "to", allowed_ip, "dev", wg_dev,
-            ])
-
         for cmd in cmds:
             subprocess.check_call(cmd)
 

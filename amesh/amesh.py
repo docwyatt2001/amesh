@@ -367,7 +367,6 @@ class Amesh(object):
         changed = node.update(key, value)
 
         if changed and self.check_group(self.node.groups, node.groups):
-            node.uninstall(self.node.dev)
             node.install(self.node.dev)
 
 
