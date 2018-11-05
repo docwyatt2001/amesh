@@ -48,7 +48,7 @@ def main():
             "etcd_prefix": "amesh",
         },
         "wireguard": {
-            "device": "wg0",
+            "device": "None",
             "port": "51280",
             "address": "None",
             "pubkey_puth": "/usr/local/etc/amesh/public.key",

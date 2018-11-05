@@ -296,12 +296,12 @@ class Amesh(object):
                           node_id, key, value)
 
         if node_id == self.node_id:
-            self.update_self(key, value)
+            self.update_self(key, value, ev_type)
         else:
             self.update_other(node_id, key, value, ev_type)
 
 
-    def update_self(self, key, value):
+    def update_self(self, key, value, ev_type):
 
         if self.mode != "controlled":
             return
@@ -313,26 +313,29 @@ class Amesh(object):
         if value == "None":
             value = None
 
-        try:
-            changed = self.node.update(key, value)
-
-            if key in ("address", "port", "endpoint"):
-                configure_wg_dev = True
-            elif key in ("groups"):
-                configure_peers = True
-            elif key in ("dev"):
-                configure_wg_dev = True
-                configure_peers = True
-
-        except Exception as e:
-            self.logger.error("failed to update self: key=%s, value=%s: %s",
-                              key, value, e)
+        # if delete, remove myself
+        if ev_type == "delete":
+            if self.node.is_present():
+                # self node is now removed. uninstall fib.
+                self.remove_self()
+                self.fib.uninstall()
             return
 
-        if changed and configure_wg_dev:
+        # update myself
+        changed = self.node.update(key, value)
+
+        if key in ("address", "port", "endpoint"):
+            configure_wg_dev = True
+        elif key in ("groups"):
+            configure_peers = True
+        elif key in ("dev", "pubkey"):
+            configure_wg_dev = True
+            configure_peers = True
+
+        if self.node.is_present() and changed and configure_wg_dev:
             self.init_wg_dev()
 
-        if changed and configure_peers:
+        if self.node.is_present() and changed and configure_peers:
             new_fib = Fib(self.node, self.node_table, logger = self.logger)
             new_fib.update_diff(self.fib)
             self.fib = new_fib
@@ -376,3 +379,6 @@ class Amesh(object):
             changed = True
 
         return changed
+
+    def remove_self(self) :
+        self.node.make_absent

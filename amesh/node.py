@@ -63,6 +63,13 @@ class Node(object):
         return "\n".join(map(lambda x: " " * indent + x, lines))
 
 
+    def is_present(self):
+        return (self.dev and self.pubkey)
+
+    def make_absent(self):
+        self.dev = None
+        self.pubkey = None
+
     def update(self, key, value):
 
         changed = False
@@ -71,11 +78,21 @@ class Node(object):
             value = None
 
         if key == "dev" and self.dev != value:
-            changed = True
-            self.dev = value
+            if not value:
+                # delete case
+                changed = True
+                self.dev = None
+            else:
+                changed = True
+                self.dev = value
         elif key == "pubkey" and self.pubkey != value:
-            changed = True
-            self.pubkey = value
+            if not value :
+                # delete case
+                changed = True
+                self.pubkey = None
+            else:
+                changed = True
+                self.pubkey = value
         elif key == "port" and self.port != int(value):
             changed = True
             self.port = int(value)
