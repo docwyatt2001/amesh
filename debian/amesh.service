@@ -1,0 +1,14 @@
+[Unit]
+Description=amesh: A wireguard mesh control plane
+After=entwork.target
+
+[Service]
+EnvironmentFile=-/etc/default/amesh
+ExecStart=/usr/local/bin/amesh $AMESH_OPTS
+KillMode=process
+Restart=always
+Type=simple
+
+[Install]
+WantedBy=multi-user.target
+Alias=amesh.service

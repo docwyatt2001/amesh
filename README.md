@@ -32,8 +32,20 @@ optional arguments:
   -c CONFIG, --config CONFIG
                         amesh config file. default is
                         /usr/local/etc/amesh/amesh.conf
+# Edit /usr/local/etc/amesh/amesh.conf
 % sudo amesh
 ```
+
+```
+# using amesh from systemd
+
+% sudo systemctl enable amesh.service
+% sudo systemctl start amesh
+```
+
+/etc/default/amesh can specify option arguments. Make the file, and
+write the AMESH_OPTS variable.
+
 
 ### How to configure amesh.
 
