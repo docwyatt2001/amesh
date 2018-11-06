@@ -12,6 +12,7 @@ and etcd as a distributed configuration repositry.
 
 ```
 % git clone https://github.com/upa/amesh.git
+% cd amesh
 % sudo pip3 install .
 ```
 
