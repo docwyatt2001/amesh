@@ -1,6 +1,6 @@
 [Unit]
 Description=amesh: A wireguard mesh control plane
-After=entwork.target
+After=network.target
 
 [Service]
 EnvironmentFile=-/etc/default/amesh
