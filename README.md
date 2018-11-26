@@ -50,6 +50,8 @@ write the AMESH_OPTS variable.
 
 ### How to configure amesh.
 
+see etc/amesh.conf.sample.
+
 
 ## ToDo
 

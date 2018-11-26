@@ -19,6 +19,13 @@ etcd_endpoint	= 127.0.0.1:2379
 #### etcd_prefix: etcd prefix that amesh nodes uses on etcd.
 etcd_prefix	= /amesh
 
+#### etcd_username: username for etcd authentication (optional)
+#etcd_username	= etcd_user
+
+#### etcd_password: password for etcd authentication (optional)
+#etcd_password  = etcd_pass
+
+
 #### groups
 #
 # amesh installs peers and allowed-ips as routes when self and a peer
@@ -34,13 +41,9 @@ groups		= group1, group2
 #
 
 #### device: wireugard device name
-#
-# This is used in only adhoc mode.
 device		= wg0
 
 #### port: Port number on witch wireguard listens.
-#
-# This is used in only adhoc mode.
 port		= 51280
 
 #### endpoint: Wireguard endpoint
@@ -48,23 +51,17 @@ port		= 51280
 # If endpoint is configured, amesh works as a server (other peers try
 # to connect using the endpoint). If not configured, amesh works as a
 # client (other peers does not initiate connections to this node).
-# This is used in only adhoc mode.
 endpoint	= 192.168.0.1:51280
 
 #### pubkey_path: Wireguard pulic key file
-#
-# This option is mandatory on adhoc. In controlled mode, pubkey is
-# mandatory for generating node id if node_id is not specififed.
 pubkey_path	= /usr/local/etc/amesh/public.key
 
 #### prvkey_path: Wireguard private key file
-#
-# This option is mandatory on both adhoc and controlled modes.
 prvkey_path	= /usr/local/etc/amesh/private.key
 
 #### allowed_ips: Wireguard allowed_ips of this node
 #
 # Other peers install these allowed-ips as routing table etnries to
 # wireguard device. This is optional and overwritable in controlled
-# mode. This is used in only adhoc mode.
+# mode.
 allowed_ips	= 10.1.0.1/32, 10.1.2.0/24
