@@ -140,9 +140,11 @@ class Fib(object):
     and wiregaurd evice as output interface.
     """
 
-    def __init__(self, self_node, node_table, logger = None):
+    def __init__(self, wg_dev, my_endpoint, my_groups, node_table,
+                 logger = None):
 
-        self.self_node = self_node
+        self.wg_dev = wg_dev
+        self.groups = my_groups
         self.peers = set()
         self.routes = set()
         self.logger = logger or default_logger
@@ -150,13 +152,19 @@ class Fib(object):
         # calculate wg peers and allowed-ips as routes from node_table
         for node_id, node in node_table.items():
 
+            if not my_endpoint and not node.endpoint:
+                # Both self and this node DO NOT have endpoints.
+                # Thus, we are client mode, and do not install routes.
+                continue
+
+
             if self.check_group(node):
 
-                self.peers.add(Peer(self.self_node.dev, node,
+                self.peers.add(Peer(self.wg_dev, node,
                                     logger = self.logger))
 
                 for allowed_ip in node.allowed_ips:
-                    self.routes.add(Route(self.self_node.dev, allowed_ip,
+                    self.routes.add(Route(self.wg_dev, allowed_ip,
                                           logger = self.logger))
 
 
@@ -167,8 +175,8 @@ class Fib(object):
                 ">")
 
     def check_group(self, node):
-        return ("any" in self.self_node.groups | node.groups or
-                self.self_node.groups & node.groups)
+        return ("any" in self.groups | node.groups or
+                self.groups & node.groups)
 
 
     def update_diff(self, old):

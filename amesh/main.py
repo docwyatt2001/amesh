@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-import os
-import sys
 import argparse
 import configparser
 import signal
@@ -46,22 +44,6 @@ def main():
         logger.addHandler(stream)
 
     config = configparser.ConfigParser()
-    config.read_dict({
-        "amesh": {
-            "etcd_endpoint": "127.0.0.1:2379",
-            "etcd_prefix": "amesh",
-        },
-        "wireguard": {
-            "device": "None",
-            "port": "51280",
-            "address": "None",
-            "pubkey_puth": "/usr/local/etc/amesh/public.key",
-            "prvkey_path": "/usr/local/etc/amesh/private.key",
-            "keepalive": "0",
-        },
-    })
-
-    
     config.readfp(args.config)
     amesh_config = dict(config.items())["amesh"]
     wg_config = dict(config.items())["wireguard"]

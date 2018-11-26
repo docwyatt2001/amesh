@@ -1,0 +1,13 @@
+
+
+select-pane -t 0 
+split-window -v
+select-pane -t 0
+split-window -v
+select-pane -t 2
+split-window -v
+
+send-keys -t 0 "ip netns exec netns1 ../amesh/main.py -df -c ./amesh-test1.conf" C-m
+send-keys -t 1 "sleep 1; ip netns exec netns2 ../amesh/main.py -df -c ./amesh-test2.conf" C-m
+send-keys -t 2 "sleep 2; ip netns exec netns3 ../amesh/main.py -df -c ./amesh-test3.conf" C-m
+send-keys -t 3 "sleep 3; ip netns exec netns4 ../amesh/main.py -df -c ./amesh-test4.conf" C-m

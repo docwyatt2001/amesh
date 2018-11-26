@@ -1,5 +1,6 @@
 
 import os
+import sys
 import time
 import uuid
 import subprocess
@@ -45,16 +46,6 @@ class Amesh(object):
         # self node parameteres
         self.node = Node()
 
-        # mode
-        if not "mode" in cnf["amesh"]:
-            err = "mode does not specified"
-            self.logger.error(err)
-            raise RuntimeError(err)
-        if not cnf["amesh"]["mode"] in ("adhoc", "controlled"):
-            err = "invalid mode '{}'".format(cnf["amesh"]["mode"])
-            self.logger.error(err)
-            raise RuntimeError(err)
-        self.mode = cnf["amesh"]["mode"]
 
         # etcd parameters
         self.etcd_endpoint = cnf["amesh"]["etcd_endpoint"]
@@ -69,40 +60,33 @@ class Amesh(object):
         self.node.update("pubkey", pubkey)
 
         # node id is specified or generated from pubkey
-        if "node_id" in cnf["amesh"]:
-            self.node_id = cnf["amesh"]["node_id"]
-        else:
-            self.node_id = str(uuid.uuid3(uuid.NAMESPACE_DNS,
-                                          self.node.pubkey))
+        self.node_id = cnf["amesh"]["node_id"]
 
 
         # parameters in adhoc mode
-        if self.mode == "adhoc":
-            self.node.update("dev", cnf["wireguard"]["device"])
-            self.node.update("port", cnf["wireguard"]["port"])
+        self.wg_dev = cnf["wireguard"]["device"]
+        self.wg_port = cnf["wireguard"]["port"]
 
-            if "address" in cnf["wireguard"]:
-                self.node.update("address", cnf["wireguard"]["address"])
+        if "endpoint" in cnf["wireguard"]:
+            self.node.update("endpoint", cnf["wireguard"]["endpoint"])
 
-            if "endpoint" in cnf["wireguard"]:
-                self.node.update("endpoint", cnf["wireguard"]["endpoint"])
+        if "keepalive" in cnf["wireguard"]:
+            self.node.update("keepalive", cnf["wireguard"]["keepalive"])
 
-            if "keepalive" in cnf["wireguard"]:
-                self.node.update("keepalive", cnf["wireguard"]["keepalive"])
+        if "allowed_ips" in cnf["wireguard"]:
+            self.node.update("allowed_ips",
+                             cnf["wireguard"]["allowed_ips"])
 
-            if "allowed_ips" in cnf["wireguard"]:
-                self.node.update("allowed_ips",
-                                 cnf["wireguard"]["allowed_ips"])
-
-            if "groups" in cnf["amesh"]:
-                self.node.update("groups", cnf["amesh"]["groups"])
+        if "groups" in cnf["amesh"]:
+            self.node.update("groups", cnf["amesh"]["groups"])
 
 
         # etcd lease for adhoc mode
         self.etcd_lease = None
 
         # initialize Fib
-        self.fib = Fib(self.node, {}, logger = self.logger)
+        self.fib = Fib(self.wg_dev, self.node.endpoint, set(),
+                       {}, logger = self.logger)
 
 
         # thread cancel events
@@ -112,32 +96,26 @@ class Amesh(object):
         self.stop_watcher = threading.Event()
         self.cancel_watcher = None # cancel of etcd3.watch_prefix()
 
-        self.logger.debug("mode:           %s", self.mode)
-        self.logger.debug("node_id:        %s", self.node_id)
-        self.logger.debug("etcd endpoint:  %s", self.etcd_endpoint)
-        self.logger.debug("etcd prefix:    %s", self.etcd_prefix)
-        self.logger.debug("wg device:      %s", self.node.dev)
-        self.logger.debug("wg prvkey path: %s", self.wg_prvkey_path)
-        self.logger.debug("wg pubkey:      %s", self.node.pubkey)
-
-        if self.mode == "adhoc":
-            self.logger.debug("wg address:     %s", self.node.address)
-            self.logger.debug("wg port:        %s", self.node.port)
-            self.logger.debug("wg endpoint:    %s", self.node.endpoint)
-            self.logger.debug("wg keepalive:   %s", self.node.keepalive)
-            self.logger.debug("wg allowed_ips: %s", self.node.allowed_ips)
-            self.logger.debug("amesh groups:   %s", self.node.groups)
+        self.logger.info("node_id:        %s", self.node_id)
+        self.logger.info("etcd endpoint:  %s", self.etcd_endpoint)
+        self.logger.info("etcd prefix:    %s", self.etcd_prefix)
+        self.logger.info("wg device:      %s", self.wg_dev)
+        self.logger.info("wg port:        %s", self.wg_port)
+        self.logger.info("wg prvkey path: %s", self.wg_prvkey_path)
+        self.logger.info("wg pubkey:      %s", self.node.pubkey)
+        self.logger.info("wg endpoint:    %s", self.node.endpoint)
+        self.logger.info("wg keepalive:   %s", self.node.keepalive)
+        self.logger.info("wg allowed_ips: %s", self.node.allowed_ips)
+        self.logger.info("amesh groups:   %s", self.node.groups)
 
 
     def start(self):
-        if self.mode == "adhoc":
-            self.init_wg_dev()
-            self.th_maintainer.start()
+        self.init_wg_dev()
+        self.th_maintainer.start()
         self.th_watcher.start()
 
     def join(self):
-        if self.mode == "adhoc":
-            self.th_maintainer.join()
+        self.th_maintainer.join()
         self.th_watcher.join()
 
         self.logger.info("uninstall routes...")
@@ -148,16 +126,15 @@ class Amesh(object):
 
         self.logger.info("stopping amesh...")
 
-        if self.mode == "adhoc":
-            self.stop_maintainer.set()
-
+        self.stop_maintainer.set()
         self.stop_watcher.set()
+
         if self.cancel_watcher:
             self.cancel_watcher()
 
     def init_wg_dev(self):
 
-        self.logger.info("set up wireguard interface %s", self.node.dev)
+        self.logger.info("set up wireguard interface %s", self.wg_dev)
 
         cmds = []
 
@@ -168,22 +145,17 @@ class Amesh(object):
         except Exception as e:
             self.logger.error(e)
 
-        if not os.path.exists("/sys/class/net/{}".format(self.node.dev)):
-            cmds.append([ IPCMD, "link", "add", self.node.dev,
+        if not os.path.exists("/sys/class/net/{}".format(self.wg_dev)):
+            cmds.append([ IPCMD, "link", "add", self.wg_dev,
                           "type", "wireguard" ],)
 
         cmds += [
-            [ IPCMD, "link", "set", "dev", self.node.dev, "up" ],
-            [ IPCMD, "addr", "flush", "dev", self.node.dev ],
-            [ WGCMD, "set", self.node.dev,
+            [ IPCMD, "link", "set", "dev", self.wg_dev, "up" ],
+            [ WGCMD, "set", self.wg_dev,
               "private-key",  self.wg_prvkey_path,
-              "listen-port", str(self.node.port),
+              "listen-port", str(self.wg_port),
             ]
         ]
-
-        if self.node.address:
-            cmds.append([ IPCMD, "addr", "add", "dev", self.node.dev,
-                          self.node.address ])
 
         for cmd in cmds:
             # Do not check exception. when fail, then crash the process.
@@ -197,13 +169,15 @@ class Amesh(object):
 
     def etcd_lease_allocate(self):
         etcd = self.etcd_client()
-        self.etcd_lease = etcd.lease(ETCD_LEASE_LIFETIME)
+        lease = int(uuid.uuid3(uuid.NAMESPACE_DNS, self.node_id)) % sys.maxsize
+        self.etcd_lease = etcd.lease(ETCD_LEASE_LIFETIME, lease_id = lease)
         self.logger.debug("allocated etcd lease is %x", self.etcd_lease.id)
 
 
     def etcd_register(self):
         etcd = self.etcd_client()
         d = self.node.serialize_for_etcd(self.etcd_prefix, self.node_id)
+        self.logger.debug("register self: %s", d)
         for k, v in d.items():
             etcd.put(k, v, lease = self.etcd_lease.id)
 
@@ -269,7 +243,8 @@ class Amesh(object):
                                  self.etcd_endpoint)
 
                 for ev in event_iter:
-                    _, node_id, key = ev.key.decode("utf-8").split("/")
+                    preflen = len(self.etcd_prefix) + 1
+                    node_id, key = ev.key.decode("utf-8")[preflen:].split("/")
                     value = ev.value.decode("utf-8")
                     if type(ev) == etcd3.events.PutEvent:
                         ev_type = "put"
@@ -291,7 +266,9 @@ class Amesh(object):
         etcd = self.etcd_client()
 
         for value, meta in etcd.get_prefix(self.etcd_prefix):
-            _, node_id, key = meta.key.decode("utf-8").split("/")
+            preflen = len(self.etcd_prefix) + 1
+            node_id, key = meta.key.decode("utf-8")[preflen:].split("/")
+
             value = value.decode("utf-8")
             self.process_etcd_kv(node_id, key, value, "put")
 
@@ -302,43 +279,15 @@ class Amesh(object):
                           ev_type, node_id, key, value)
 
         if node_id == self.node_id:
-            self.update_self(key, value, ev_type)
-        else:
-            self.update_other(node_id, key, value, ev_type)
+            # Do not allow others to override myself.
 
-
-    def update_self(self, key, value, ev_type):
-
-        if self.mode != "controlled":
+            # A corner case:
+            # When this host joins before old key/values about this host
+            # disappear by lease expire, the new key/values will disappear
+            # when the old lease exipires. It occurs as "delete" with
+            # my node_id. In this case, register myself again.
+            #self.etcd_register()
             return
-
-        if ev_type == "delete":
-            return self.remove_self(key, value)
-
-        configure_wg_dev = False
-        configure_peers = False
-
-        # update myself
-        changed = self.node.update(key, value)
-
-        if key in ("address", "endpoint"):
-            configure_wg_dev = True
-        elif key in ("groups"):
-            configure_peers = True
-        elif key in ("dev", "pubkey", "port"):
-            configure_wg_dev = True
-            configure_peers = True
-
-        if self.node.is_present() and changed and configure_wg_dev:
-            self.init_wg_dev()
-
-        if self.node.is_present() and changed and configure_peers:
-            new_fib = Fib(self.node, self.node_table, logger = self.logger)
-            new_fib.update_diff(self.fib)
-            self.fib = new_fib
-
-
-    def update_other(self, node_id, key, value, ev_type):
 
         changed = False
 
@@ -348,8 +297,9 @@ class Amesh(object):
         elif ev_type == "delete":
             changed = self.remove_node(node_id)
 
-        if self.node.is_present() and changed:
-            new_fib = Fib(self.node, self.node_table, logger = self.logger)
+        if changed:
+            new_fib = Fib(self.wg_dev, self.node.endpoint, self.node.groups,
+                          self.node_table, logger = self.logger)
             new_fib.update_diff(self.fib)
             self.fib = new_fib
 
@@ -375,14 +325,3 @@ class Amesh(object):
 
         return changed
 
-
-    def remove_self(self, key, value) :
-
-        if not self.node.is_present():
-            return
-
-        self.logger.info("my id is removed. make me absent and uninstall Fib.")
-
-        self.fib.uninstall()
-        self.fib = Fib(self.node, {}, logger = self.logger)
-        self.node.make_absent()
