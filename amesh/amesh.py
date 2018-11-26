@@ -47,25 +47,34 @@ class Amesh(object):
         self.node = Node()
 
 
-        # etcd parameters
+        ## etcd parameters
         self.etcd_endpoint = cnf["amesh"]["etcd_endpoint"]
         self.etcd_prefix = cnf["amesh"]["etcd_prefix"]
+
+        if  "etcd_username" in cnf["amesh"]:
+            self.etcd_username = cnf["amesh"]["etcd_username"]
+        else:
+            self.etcd_username = None
+
+        if  "etcd_password" in cnf["amesh"]:
+            self.etcd_password = cnf["amesh"]["etcd_password"]
+        else:
+            self.etcd_password = None
+            
+        # node id
+        self.node_id = cnf["amesh"]["node_id"]
+
+        ## Wireguard parameters
+        self.wg_dev = cnf["wireguard"]["device"]
+        self.wg_port = cnf["wireguard"]["port"]
 
         # private key file
         self.wg_prvkey_path = cnf["wireguard"]["prvkey_path"]
 
-        # public key file
+        # public key file and string
         with open(cnf["wireguard"]["pubkey_path"], "r") as f:
             pubkey = f.read().strip()
         self.node.update("pubkey", pubkey)
-
-        # node id is specified or generated from pubkey
-        self.node_id = cnf["amesh"]["node_id"]
-
-
-        # parameters in adhoc mode
-        self.wg_dev = cnf["wireguard"]["device"]
-        self.wg_port = cnf["wireguard"]["port"]
 
         if "endpoint" in cnf["wireguard"]:
             self.node.update("endpoint", cnf["wireguard"]["endpoint"])
@@ -81,7 +90,7 @@ class Amesh(object):
             self.node.update("groups", cnf["amesh"]["groups"])
 
 
-        # etcd lease for adhoc mode
+        # etcd lease
         self.etcd_lease = None
 
         # initialize Fib
@@ -164,7 +173,9 @@ class Amesh(object):
 
     def etcd_client(self):
         host, port = self.etcd_endpoint.split(":")
-        return etcd3.client(host = host, port = port)
+        return etcd3.client(host = host, port = port,
+                            user = self.etcd_username,
+                            password = self.etcd_password)
 
 
     def etcd_lease_allocate(self):
@@ -279,15 +290,8 @@ class Amesh(object):
                           ev_type, node_id, key, value)
 
         if node_id == self.node_id:
-            # Do not allow others to override myself.
-
-            # A corner case:
-            # When this host joins before old key/values about this host
-            # disappear by lease expire, the new key/values will disappear
-            # when the old lease exipires. It occurs as "delete" with
-            # my node_id. In this case, register myself again.
-            #self.etcd_register()
             return
+
 
         changed = False
 
