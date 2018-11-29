@@ -47,6 +47,17 @@ optional arguments:
 /etc/default/amesh can specify option arguments. Make the file, and
 write the AMESH_OPTS variable.
 
+Note that amesh depends on some sysctl parameters shown below.
+
+net.ipv4.ip_forward=1
+net.ipv4.conf.default.rp_filter=0
+net.ipv4.conf.all.rp_filter=0
+
+And we recommend,
+
+net.ipv4.fib_multipath_use_neigh=1
+net.ipv4.fib_multipath_hash_policy=1
+
 
 ### How to configure amesh.
 
