@@ -16,7 +16,7 @@ if not "amesh." in __name__:
                         ETCD_LEASE_KEEPALIVE)
 else:
     from amesh.node import Node
-    from amesh.fib import Fib
+    from amesh.fib import Fib, PortSet
     from amesh.static import (IPCMD, WGCMD,
                               ETCD_LEASE_LIFETIME,
                               ETCD_LEASE_KEEPALIVE)
