@@ -20,7 +20,7 @@ for nsnum in 1 2 3 4; do
 	intfa=$nsname-a
 	intfb=$nsname-b
 	phy_ip=172.16.0.$nsnum/24
-	wg_ip=172.16.1.$nsnum/32
+	dummy_ip=172.16.1.$nsnum/32
 
 	if [ -e /sys/class/net/$intfa ]; then
 		ip link del dev $intfa
@@ -39,10 +39,10 @@ for nsnum in 1 2 3 4; do
 
 	ip netns exec $nsname ip link set dev lo up
 	ip netns exec $nsname ip link set dev $intfb up
-
 	ip netns exec $nsname ip addr add dev $intfb $phy_ip
-	ip netns exec $nsname ip link add wg0 type wireguard
-	ip netns exec $nsname ip link set dev wg0 up
-	ip netns exec $nsname ip addr add dev wg0 $wg_ip
+
+	ip netns exec $nsname ip link add dummy0 type dummy
+	ip netns exec $nsname ip link set dev dummy0 up
+	ip netns exec $nsname ip addr add dev dummy0 $dummy_ip
 done
 

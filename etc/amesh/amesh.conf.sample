@@ -29,8 +29,7 @@ etcd_prefix	= /amesh
 #### groups
 #
 # amesh installs peers and allowed-ips as routes when self and a peer
-# belong the same group, or either has the specific group "any". This
-# is used in only adhoc mode.
+# belong the same group, or either has the specific group "any".
 groups		= group1, group2
 
 
@@ -40,18 +39,19 @@ groups		= group1, group2
 # Wireguard configurations
 #
 
-#### device: wireugard device name
+#### device: wireugard device name for incoming connections
+# this device is created to accept incoming connections, when
+# 'endpoint' is configured (it means that this host is a server)
 device		= wg0
 
-#### port: Port number on witch wireguard listens.
-port		= 51280
-
 #### endpoint: Wireguard endpoint
-#
 # If endpoint is configured, amesh works as a server (other peers try
 # to connect using the endpoint). If not configured, amesh works as a
-# client (other peers does not initiate connections to this node).
+# client (other peers does not initiate connections to this host).
 endpoint	= 192.168.0.1:51280
+
+#### port: Port number on which listen ports of wg devices start
+port_base	= 51280
 
 #### pubkey_path: Wireguard pulic key file
 pubkey_path	= /usr/local/etc/amesh/public.key
@@ -62,6 +62,5 @@ prvkey_path	= /usr/local/etc/amesh/private.key
 #### allowed_ips: Wireguard allowed_ips of this node
 #
 # Other peers install these allowed-ips as routing table etnries to
-# wireguard device. This is optional and overwritable in controlled
-# mode.
+# wireguard device.
 allowed_ips	= 10.1.0.1/32, 10.1.2.0/24

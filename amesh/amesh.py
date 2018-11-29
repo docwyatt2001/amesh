@@ -10,7 +10,7 @@ import etcd3
 
 if not "amesh." in __name__:
     from node import Node
-    from fib import Fib
+    from fib import Fib, PortSet
     from static import (IPCMD, WGCMD,
                         ETCD_LEASE_LIFETIME,
                         ETCD_LEASE_KEEPALIVE)
@@ -65,8 +65,8 @@ class Amesh(object):
         self.node_id = cnf["amesh"]["node_id"]
 
         ## Wireguard parameters
-        self.wg_dev = cnf["wireguard"]["device"]
-        self.wg_port = cnf["wireguard"]["port"]
+
+        self.wg_portbase = int(cnf["wireguard"]["port_base"])
 
         # private key file
         self.wg_prvkey_path = cnf["wireguard"]["prvkey_path"]
@@ -76,6 +76,13 @@ class Amesh(object):
             pubkey = f.read().strip()
         self.node.update("pubkey", pubkey)
 
+        # wg device for incomming connections (server only)
+        if "device" in cnf["wireguard"]:
+            self.wg_dev = cnf["wireguard"]["device"]
+        else:
+            self.wg_dev = None
+
+        # wg endpoint for incomming connections (server only)
         if "endpoint" in cnf["wireguard"]:
             self.node.update("endpoint", cnf["wireguard"]["endpoint"])
 
@@ -89,13 +96,19 @@ class Amesh(object):
         if "groups" in cnf["amesh"]:
             self.node.update("groups", cnf["amesh"]["groups"])
 
+        if self.node.endpoint and not self.wg_dev:
+            raise RuntimeError("'endpoint' needs 'device'")
+
+        # PortSet for listen-ports for dedicated wg devices for egress
+        self.listen_port_set = PortSet(self.wg_portbase)
 
         # etcd lease
         self.etcd_lease = None
 
         # initialize Fib
-        self.fib = Fib(self.wg_dev, self.node.endpoint, set(),
-                       {}, logger = self.logger)
+        self.fib = Fib(self.wg_dev, self.node, self.node_table, 
+                       self.listen_port_set, self.wg_prvkey_path,
+                       logger = self.logger)
 
 
         # thread cancel events
@@ -109,17 +122,18 @@ class Amesh(object):
         self.logger.info("etcd endpoint:  %s", self.etcd_endpoint)
         self.logger.info("etcd prefix:    %s", self.etcd_prefix)
         self.logger.info("wg device:      %s", self.wg_dev)
-        self.logger.info("wg port:        %s", self.wg_port)
+        self.logger.info("wg endpoint:    %s", self.node.endpoint)
+        self.logger.info("wg port_base:   %s", self.wg_portbase)
         self.logger.info("wg prvkey path: %s", self.wg_prvkey_path)
         self.logger.info("wg pubkey:      %s", self.node.pubkey)
-        self.logger.info("wg endpoint:    %s", self.node.endpoint)
         self.logger.info("wg keepalive:   %s", self.node.keepalive)
         self.logger.info("wg allowed_ips: %s", self.node.allowed_ips)
         self.logger.info("amesh groups:   %s", self.node.groups)
 
 
     def start(self):
-        self.init_wg_dev()
+        if self.node.endpoint:
+            self.init_wg_dev()
         self.th_maintainer.start()
         self.th_watcher.start()
 
@@ -162,7 +176,7 @@ class Amesh(object):
             [ IPCMD, "link", "set", "dev", self.wg_dev, "up" ],
             [ WGCMD, "set", self.wg_dev,
               "private-key",  self.wg_prvkey_path,
-              "listen-port", str(self.wg_port),
+              "listen-port", self.node.endpoint.split(":")[1],
             ]
         ]
 
@@ -302,8 +316,9 @@ class Amesh(object):
             changed = self.remove_node(node_id)
 
         if changed:
-            new_fib = Fib(self.wg_dev, self.node.endpoint, self.node.groups,
-                          self.node_table, logger = self.logger)
+            new_fib = Fib(self.wg_dev, self.node, self.node_table, 
+                          self.listen_port_set, self.wg_prvkey_path,
+                          logger = self.logger)
             new_fib.update_diff(self.fib)
             self.fib = new_fib
 
