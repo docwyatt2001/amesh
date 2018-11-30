@@ -32,6 +32,11 @@ etcd_prefix	= /amesh
 # belong the same group, or either has the specific group "any".
 groups		= group1, group2
 
+#### tracked_devices
+#
+# IP prefixes assinged to specified devices are distributed to other
+# hosts as allowed-ips.
+#tracked_devices	= enp0s3, enp0s8
 
 
 [wireguard]
@@ -49,9 +54,6 @@ device		= wg0
 # to connect using the endpoint). If not configured, amesh works as a
 # client (other peers does not initiate connections to this host).
 endpoint	= 192.168.0.1:51280
-
-#### port: Port number on which listen ports of wg devices start
-port_base	= 51280
 
 #### pubkey_path: Wireguard pulic key file
 pubkey_path	= /usr/local/etc/amesh/public.key

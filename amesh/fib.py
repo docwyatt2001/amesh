@@ -23,13 +23,12 @@ default_logger.propagate = False
 class Peer(object):
 
     def __init__(self, wg_dev, node, outbound = False,
-                 listen_port = None, prvkey_path = None, logger = None):
+                 prvkey_path = None, logger = None):
         """
         Peer:
         @wg_dev: wireugard device name for this peer
         @node: Node class for this peer
         @outbound: Peer for incomming connection or not
-        @listen_port: listen port for egress wg device for this peer
         @prvkey_path: private key path for egress wg device for this peer
         @logger: logger
         """
@@ -42,17 +41,15 @@ class Peer(object):
         self.allowed_ips = node.allowed_ips
         self.keepalive = node.keepalive
 
-        self.listen_port = listen_port
         self.prvkey_path = prvkey_path
 
         self.logger = logger or default_logger
 
     def __str__(self):
 
-        return ("<Peer: hash={} pubkey={} endpoint={} allowed-ips={} listen-port={}>"
+        return ("<Peer: hash={} pubkey={} endpoint={} allowed-ips={}>"
                 .format(self.__hash__(),
-                        self.pubkey, self.endpoint,
-                        self.allowed_ips, self.listen_port))
+                        self.pubkey, self.endpoint, self.allowed_ips))
 
     def __eq__(self, other):
 
@@ -61,21 +58,19 @@ class Peer(object):
                 self.pubkey == other.pubkey and
                 self.endpoint == other.endpoint and
                 self.allowed_ips == other.allowed_ips and
-                self.keepalive == self.keepalive and
-                self.listen_port == other.listen_port)
+                self.keepalive == self.keepalive)
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
     def __hash__(self):
         return int(uuid.uuid5(uuid.NAMESPACE_DNS,
-                              "{}{}{}{}{}{}{}".format(self.wg_dev,
+                              "{}{}{}{}{}{}".format(self.wg_dev,
                                                       self.outbound,
                                                       self.pubkey,
                                                       self.endpoint,
                                                       self.allowed_ips,
-                                                      self.keepalive,
-                                                      self.listen_port)))
+                                                      self.keepalive)))
 
     def install(self):
 
@@ -92,29 +87,25 @@ class Peer(object):
             cmds += [
                 [ IPCMD, "link", "add", self.wg_dev, "type", "wireguard" ],
                 [ IPCMD, "link", "set", "dev", self.wg_dev, "up" ],
-                [ WGCMD , "set", self.wg_dev, "private-key", self.prvkey_path,
-                  "listen-port", self.listen_port ]
+                [ WGCMD , "set", self.wg_dev, "private-key", self.prvkey_path ]
             ]
 
         wgcmd = [ WGCMD, "set", self.wg_dev, "peer", self.pubkey ]
         if self.endpoint:
             wgcmd += [ "endpoint", self.endpoint ]
         if self.allowed_ips:
-            wgcmd += [ "allowed-ips", ",".join(self.allowed_ips) ]
+            wgcmd += [ "allowed-ips", ",".join(map(str, self.allowed_ips)) ]
         if self.keepalive:
             wgcmd += [ "persistent-keepalive", str(self.keepalive) ]
 
         cmds.append(wgcmd)
 
-        try:
-            for cmd in cmds:
+        self.logger.debug("install peer: %s", " ".join(map(str, cmds)))
+        for cmd in cmds:
+            try:
                 subprocess.check_call(map(str, cmd))
-                if self.logger:
-                    self.logger.debug("install peer: %s",
-                                      " ".join(map(str, cmd)))
-        except Exception as e:
-            self.logger.error("failed to install peer: \n%s",
-                              "\n".join(map(lambda x: " ".join(str(x)), cmds)))
+            except Exception as e:
+                self.logger.error("failed to install peer: %s", " ".join(cmd))
 
 
     def uninstall(self):
@@ -131,23 +122,27 @@ class Peer(object):
             # thus, remove the outbound wg device.
             cmds.append([ IPCMD, "link", "del", "dev", self.wg_dev])
 
-        try:
-            for cmd in cmds:
+        self.logger.debug("uninstall peer: %s", " ".join(map(str, cmds)))
+        for cmd in cmds:
+            try:
                 subprocess.check_call(map(str, cmd))
-                if self.logger:
-                    self.logger.debug("uninstall peer: %s",
-                                      " ".join(map(str, cmd)))
-        except Exception as e:
-            self.logger.error("failed to uninstall peer: \n%s",
-                              "\n".join(map(lambda x: " ".join(str(x)), cmds)))
+            except Exception as e:
+                self.logger.error("failed to uninstall peer: \n%s",
+                                  " ".join(cmd))
 
 
 class Route(object):
 
     def __init__(self, wg_dev, prefix, logger = None):
         self.wg_devs = [ wg_dev ]
-        self.prefix = prefix
+        self.prefix = str(prefix)
         self.logger = logger or default_logger
+
+        self.removed = False
+        # removed is a flag that indicates this route will be removed
+        # because of peer is uninstalled (and wg device is removed).
+        # this flag changes hash of this object, so that
+        # the same route in new FIB will be installed.
 
     def __str__(self):
         return "<Route hash={} prefix={} dev={}>".format(self.__hash__(),
@@ -156,19 +151,27 @@ class Route(object):
 
     def __eq__(self, other):
         return (self.wg_devs == other.wg_devs and
-                self.prefix == other.prefix)
+                self.prefix == other.prefix and
+                self.removed == other.removed)
 
     def __ne__(self, other):
         return not self.__eq__(other)
 
     def __hash__(self):
         return int(uuid.uuid5(uuid.NAMESPACE_DNS,
-                              "{}{}".format(self.wg_devs, self.prefix)))
+                              "{}{}{}".format(self.wg_devs, self.prefix,
+                                              self.removed)))
 
     def append_nexthop_dev(self, wg_dev):
         if wg_dev in self.wg_devs:
             return
         self.wg_devs.append(wg_dev)
+
+    def check_dev(self, wg_dev):
+        return (wg_dev in self.wg_devs)
+
+    def make_this_removed(self):
+        self.removed = True
 
     def install(self):
 
@@ -179,8 +182,7 @@ class Route(object):
 
         try:
             subprocess.check_call(ipcmd)
-            if self.logger:
-                self.logger.debug("install route: %s", " ".join(ipcmd))
+            self.logger.debug("install route: %s", " ".join(ipcmd))
         except Exception as e:
             self.logger.error("failed to install route: %s", " ".join(ipcmd))
 
@@ -190,56 +192,21 @@ class Route(object):
 
         try:
             subprocess.check_call(ipcmd)
-            if self.logger:
-                self.logger.debug("uninstall route: %s", " ".join(ipcmd))
+            self.logger.debug("uninstall route: %s", " ".join(ipcmd))
         except Exception as e:
             self.logger.error("failed to uninstall route: %s", " ".join(ipcmd))
 
 
-class PortSet(object):
-
-    """
-    PortSet:
-    This class maintains a set of ports. use this to manage
-    listen ports for wg devices for outbound connections.
-    """
-
-    def __init__(self, portbase):
-        self.portbase = portbase
-        self.ports = {}
-
-    def acquire(self, pubkey):
-        """
-        return the minimum port that does not duplicate in ports
-        and greater than the portbase.
-        """
-        if pubkey in self.ports:
-            # ok, this peer already has a port
-            return self.ports[pubkey]
-
-        # acquire new port number for this peer
-        port = self.portbase
-        while True:
-            if not port in self.ports.values():
-                self.ports[pubkey] = port
-                return port
-            port += 1
-
-    def release(self, pubkey):
-        if not pubkey in self.ports:
-            return
-        del(self.ports[pubkey])
 
 class Fib(object):
 
-    def __init__(self, wg_dev, self_node, node_table,
-                 listen_port_set, prvkey_path, logger = None):
+    def __init__(self, wg_dev, self_node, node_table, prvkey_path,
+                 logger = None):
         """
         Fib:
         @wg_dev: wg device for incomming connections
         @self_node: Node describing self (check my groups and ednpoints)
         @node_table: dict of Node instances
-        @listen_port_set: PortSet object for managing listen ports
         @prvkey_path: wireguard private key path
         """
 
@@ -249,8 +216,7 @@ class Fib(object):
         self.routes = set()
         self.routes_dict = {}
 
-        # params for dedicated wg devices for outbound conncetions
-        self.listen_port_set = listen_port_set
+        # prvkey for dedicated wg devices for outbound conncetions
         self.prvkey_path = prvkey_path
 
         self.logger = logger or default_logger
@@ -276,11 +242,8 @@ class Fib(object):
             # Peer for outbound connection if the node is a server
             if node.endpoint:
                 wg_dev = "wg-{}".format(node.pubkey)[:13]
-                listen_port = self.listen_port_set.acquire(node.pubkey)
-
                 self.peers.add(Peer(wg_dev, node,
                                     outbound = True,
-                                    listen_port = listen_port,
                                     prvkey_path = self.prvkey_path,
                                     logger = self.logger))
 
@@ -329,24 +292,37 @@ class Fib(object):
         print("\n".join(map(str, self.routes)))
         """
 
-        # Step 1, Remove routes that are in old, but not in self
-        removed_routes = old.routes - self.routes
-        for removed_route in removed_routes:
-            removed_route.uninstall()
-
-        # Step 2, Remove peers that are in old, but not in self
+        # Step 1, Remove peers that are in old, but not in new Fib,
+        # and check routes associated with the removed peers
         removed_peers = old.peers - self.peers
         for removed_peer in removed_peers:
-            if removed_peer.listen_port:
-                self.listen_port_set.release(removed_peer.pubkey)
+
             removed_peer.uninstall()
 
-        # Step 3, Add peers that are not in old, but in self
+            if removed_peer.outbound:
+                for route in self.routes:
+                    if route.check_dev(removed_peer.wg_dev):
+                        # this associated route is also removed automatically
+                        # by linux kernel because the wg interface for
+                        # this outbound connction is removed.
+                        route.make_this_removed()
+
+
+        # Step 2, Remove routes that are in old, but not in new Fib
+        # routes, which hav removed = True, are already removed
+        # at last step.
+        removed_routes = old.routes - self.routes
+        for removed_route in removed_routes:
+            if not removed_route.removed:
+                removed_route.uninstall()
+
+
+        # Step 3, Add peers that are not in old, but in new Fib
         added_peers = self.peers - old.peers
         for added_peer in added_peers:
             added_peer.install()
 
-        # Step 4, Add routes that are not in old, but in self
+        # Step 4, Add routes that are not in old, but in new Fib
         added_routes = self.routes - old.routes
         for added_route in added_routes:
             added_route.install()

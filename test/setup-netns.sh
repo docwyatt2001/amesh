@@ -44,5 +44,9 @@ for nsnum in 1 2 3 4; do
 	ip netns exec $nsname ip link add dummy0 type dummy
 	ip netns exec $nsname ip link set dev dummy0 up
 	ip netns exec $nsname ip addr add dev dummy0 $dummy_ip
+
+	# for device tracking test
+	ip netns exec $nsname ip link add dummy1 type dummy
+	ip netns exec $nsname ip link set dev dummy1 up
 done
 

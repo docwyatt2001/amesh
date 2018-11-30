@@ -1,5 +1,7 @@
 
 
+import ipaddress
+
 if not "amesh." in __name__:
     from static import IPCMD, WGCMD, VERBOSE
 else:
@@ -76,7 +78,14 @@ class Node(object):
 
         elif key == "allowed_ips":
             if not value == "":
-                ips = set(value.strip().replace(" ", "").split(","))
+                try:
+                    prefixes = map(ipaddress.ip_network,
+                                   value.strip().replace(" ", "").split(","))
+                    ips = set(prefixes)
+                except Exception as e:
+                    self.logger.error("failed to parse allowed_ips: %s, %s",
+                                      value, e)
+                    return changed
             else :
                 ips = set()
             if self.allowed_ips != ips:
@@ -99,13 +108,20 @@ class Node(object):
         return changed
 
 
+    def add_allowed_ip(self, allowed_ip):
+        self.allowed_ips.add(allowed_ip)
+
+    def remove_allowed_ip(self, allowed_ip):
+        if allowed_ip in self.allowed_ips:
+            self.allowed_ips.remove(allowed_ip)
+
     def serialize_for_etcd(self, etcd_prefix, node_id):
         p = "{}/{}".format(etcd_prefix, node_id)
 
         return {
             p + "/pubkey": self.pubkey,
             p + "/endpoint": str(self.endpoint),
-            p + "/allowed_ips": ",".join(self.allowed_ips),
+            p + "/allowed_ips": ",".join(map(str, self.allowed_ips)),
             p + "/keepalive": str(self.keepalive),
             p + "/groups": ",".join(self.groups),
         }

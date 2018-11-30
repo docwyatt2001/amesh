@@ -5,18 +5,21 @@ import time
 import uuid
 import subprocess
 import threading
+import ipaddress
 
 import etcd3
 
 if not "amesh." in __name__:
     from node import Node
-    from fib import Fib, PortSet
+    from fib import Fib
+    from devtracker import DevTracker
     from static import (IPCMD, WGCMD,
                         ETCD_LEASE_LIFETIME,
                         ETCD_LEASE_KEEPALIVE)
 else:
     from amesh.node import Node
-    from amesh.fib import Fib, PortSet
+    from amesh.fib import Fib
+    from amesh.devtracker import DevTracker
     from amesh.static import (IPCMD, WGCMD,
                               ETCD_LEASE_LIFETIME,
                               ETCD_LEASE_KEEPALIVE)
@@ -66,8 +69,6 @@ class Amesh(object):
 
         ## Wireguard parameters
 
-        self.wg_portbase = int(cnf["wireguard"]["port_base"])
-
         # private key file
         self.wg_prvkey_path = cnf["wireguard"]["prvkey_path"]
 
@@ -90,25 +91,31 @@ class Amesh(object):
             self.node.update("keepalive", cnf["wireguard"]["keepalive"])
 
         if "allowed_ips" in cnf["wireguard"]:
+            # validate
+            ips = cnf["wireguard"]["allowed_ips"]
+            map(ipaddress.ip_network, ips.strip().replace(" ", "").split(","))
             self.node.update("allowed_ips",
                              cnf["wireguard"]["allowed_ips"])
 
+        # amesh specific configurations
         if "groups" in cnf["amesh"]:
             self.node.update("groups", cnf["amesh"]["groups"])
 
+        if "tracked_devices" in cnf["amesh"]:
+            self.tracked_devices = set(cnf["amesh"]["tracked_devices"]
+                                       .strip().replace(" ", "").split(","))
+        else:
+            self.tracked_devices = set()
+
         if self.node.endpoint and not self.wg_dev:
             raise RuntimeError("'endpoint' needs 'device'")
-
-        # PortSet for listen-ports for dedicated wg devices for egress
-        self.listen_port_set = PortSet(self.wg_portbase)
 
         # etcd lease
         self.etcd_lease = None
 
         # initialize Fib
         self.fib = Fib(self.wg_dev, self.node, self.node_table, 
-                       self.listen_port_set, self.wg_prvkey_path,
-                       logger = self.logger)
+                       self.wg_prvkey_path, logger = self.logger)
 
 
         # thread cancel events
@@ -123,7 +130,6 @@ class Amesh(object):
         self.logger.info("etcd prefix:    %s", self.etcd_prefix)
         self.logger.info("wg device:      %s", self.wg_dev)
         self.logger.info("wg endpoint:    %s", self.node.endpoint)
-        self.logger.info("wg port_base:   %s", self.wg_portbase)
         self.logger.info("wg prvkey path: %s", self.wg_prvkey_path)
         self.logger.info("wg pubkey:      %s", self.node.pubkey)
         self.logger.info("wg keepalive:   %s", self.node.keepalive)
@@ -132,6 +138,11 @@ class Amesh(object):
 
 
     def start(self):
+
+        self.devtracker = DevTracker(self.tracked_devices,
+                                     logger = self.logger)
+        self.devtracker.start()
+
         if self.node.endpoint:
             self.init_wg_dev()
         self.th_maintainer.start()
@@ -149,6 +160,7 @@ class Amesh(object):
 
         self.logger.info("stopping amesh...")
 
+        self.devtracker.stop()
         self.stop_maintainer.set()
         self.stop_watcher.set()
 
@@ -199,11 +211,14 @@ class Amesh(object):
         self.logger.debug("allocated etcd lease is %x", self.etcd_lease.id)
 
 
-    def etcd_register(self):
+    def etcd_register(self, key = None):
         etcd = self.etcd_client()
         d = self.node.serialize_for_etcd(self.etcd_prefix, self.node_id)
-        self.logger.debug("register self: %s", d)
+
         for k, v in d.items():
+            if key and not key in k:
+                continue
+            self.logger.debug("register self: %s, %s", k, v)
             etcd.put(k, v, lease = self.etcd_lease.id)
 
 
@@ -218,6 +233,7 @@ class Amesh(object):
 
                 self.etcd_lease_allocate()
                 self.etcd_register()
+
                 cnt = 0
 
                 connected = True
@@ -229,6 +245,8 @@ class Amesh(object):
 
                     if self.stop_maintainer.is_set():
                         return
+
+                    self.handle_devtracker()
 
                     cnt += 1
                     if cnt % ETCD_LEASE_KEEPALIVE == 0:
@@ -317,8 +335,7 @@ class Amesh(object):
 
         if changed:
             new_fib = Fib(self.wg_dev, self.node, self.node_table, 
-                          self.listen_port_set, self.wg_prvkey_path,
-                          logger = self.logger)
+                          self.wg_prvkey_path, logger = self.logger)
             new_fib.update_diff(self.fib)
             self.fib = new_fib
 
@@ -344,3 +361,21 @@ class Amesh(object):
 
         return changed
 
+
+    def handle_devtracker(self):
+
+        while self.devtracker.queued():
+            msg = self.devtracker.pop()
+            print(msg)
+            if not msg:
+                self.logger.debug("pop from devtracker failed")
+                break
+
+            if msg["action"] == "RTM_NEWADDR":
+                self.node.add_allowed_ip(msg["address"])
+            elif msg["action"] == "RTM_DELADDR":
+                self.node.remove_allowed_ip(msg["address"])
+            else:
+                self.logger.error("invalid device track action %s", str(msg))
+
+            self.etcd_register(key = "allowed_ips")
