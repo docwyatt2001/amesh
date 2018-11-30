@@ -9,6 +9,9 @@ net.ipv4.fib_multipath_use_neigh=1
 net.ipv4.fib_multipath_hash_policy=1
 ```
 
+0. install etcd and configure it to listen on 172.16.0.100
+  - amesh processes on netnses connecto to 172.16.0.100.
+  - modify ETCD_ADVERTISE_CLIENT_URLS and ETCD_ADVERTISE_CLIENT_URLS in /etc/default/etcd
 1. sudo ./setup-netns.sh
   - configure network namespaces for test
 2. sudo tmux new-session \; source-file start-ameshes-tmux
