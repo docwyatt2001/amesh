@@ -19,22 +19,34 @@ and etcd as a distributed configuration repositry.
 ## Quick Start
 
 ```
-# install etcd
+# install etcd for a data repository
 % sudo apt install etcd
+
+# install wiregaurd. see https://www.wireguard.com/install/
+
+# setup configurations
 
 % cd /usr/local/etc/amesh
 % cp amesh.conf.sample amesh.conf
+
+# Edit /usr/local/etc/amesh/amesh.conf
+# and create wiregaurd private and public keys
+% vim amesh.conf
+% wg genkey > private.key
+% wg pubkey < private.key > public.key
+
+
 % amesh -h
-usage: amesh [-h] [-d] [-c CONFIG]
+usage: amesh [-h] [-d] [-f] [-c CONFIG]
 
 optional arguments:
   -h, --help            show this help message and exit
   -d, --debug           enable debug logs
+  -f, --foreground-log  enable foreground logs
   -c CONFIG, --config CONFIG
                         amesh config file. default is
                         /usr/local/etc/amesh/amesh.conf
-# Edit /usr/local/etc/amesh/amesh.conf
-% sudo amesh
+% sudo amesh -df
 ```
 
 ```
@@ -68,4 +80,4 @@ see etc/amesh.conf.sample.
 
 - clustering and scurity on etcd
 - testing
-- README
+- Document
