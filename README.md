@@ -22,7 +22,7 @@ and etcd as a distributed configuration repositry.
 # install etcd for a data repository
 % sudo apt install etcd
 
-# install wiregaurd. see https://www.wireguard.com/install/
+# install wireguard. see https://www.wireguard.com/install/
 
 # setup configurations
 
@@ -49,9 +49,9 @@ optional arguments:
 % sudo amesh -df
 ```
 
-```
-# using amesh from systemd
 
+### using amesh through systemd
+```
 % sudo systemctl enable amesh.service
 % sudo systemctl start amesh
 ```
@@ -73,6 +73,7 @@ And we recommend,
 
 ### How to configure amesh.
 
+TDB.
 see etc/amesh.conf.sample.
 
 
