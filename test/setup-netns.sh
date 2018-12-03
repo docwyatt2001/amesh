@@ -17,6 +17,7 @@ ip addr add dev $br 172.16.0.100/24
 for nsnum in 1 2 3 4; do
 
 	nsname=netns$nsnum
+	ipns="ip netns exec $nsname"
 	intfa=$nsname-a
 	intfb=$nsname-b
 	phy_ip=172.16.0.$nsnum/24
@@ -37,16 +38,16 @@ for nsnum in 1 2 3 4; do
 	ip link set dev $intfa master $br
 	ip link set dev $intfb netns $nsname
 
-	ip netns exec $nsname ip link set dev lo up
-	ip netns exec $nsname ip link set dev $intfb up
-	ip netns exec $nsname ip addr add dev $intfb $phy_ip
+	$ipns ip link set dev lo up
+	$ipns ip link set dev $intfb up
+	$ipns ip addr add dev $intfb $phy_ip
 
-	ip netns exec $nsname ip link add dummy0 type dummy
-	ip netns exec $nsname ip link set dev dummy0 up
-	ip netns exec $nsname ip addr add dev dummy0 $dummy_ip
+	$ipns ip link add dummy0 type dummy
+	$ipns ip link set dev dummy0 up
+	$ipns ip addr add dev dummy0 $dummy_ip
 
 	# for device tracking test
-	ip netns exec $nsname ip link add dummy1 type dummy
-	ip netns exec $nsname ip link set dev dummy1 up
+	$ipns ip link add dummy1 type dummy
+	$ipns ip link set dev dummy1 up
 done
 

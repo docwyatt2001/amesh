@@ -107,6 +107,13 @@ class Amesh(object):
         else:
             self.tracked_devices = set()
 
+        if "vrf" in cnf["amesh"]:
+            self.vrf = cnf["amesh"]["vrf"]
+            if not os.path.exists("/sys/class/net/{}".format(self.vrf)):
+                raise RuntimeError("VRF {} does not exist".format(self.vrf))
+        else:
+            self.vrf = None
+
         if self.node.endpoint and not self.wg_dev:
             raise RuntimeError("'endpoint' needs 'device'")
 
@@ -115,7 +122,7 @@ class Amesh(object):
 
         # initialize Fib
         self.fib = Fib(self.wg_dev, self.node, self.node_table, 
-                       self.wg_prvkey_path, logger = self.logger)
+                       self.wg_prvkey_path, self.vrf, logger = self.logger)
 
 
         # thread cancel events
@@ -183,6 +190,10 @@ class Amesh(object):
         if not os.path.exists("/sys/class/net/{}".format(self.wg_dev)):
             cmds.append([ IPCMD, "link", "add", self.wg_dev,
                           "type", "wireguard" ],)
+
+        if self.vrf:
+            cmds.append([ IPCMD, "link", "set", "dev", self.wg_dev,
+                          "master", self.vrf])
 
         cmds += [
             [ IPCMD, "link", "set", "dev", self.wg_dev, "up" ],
@@ -335,7 +346,7 @@ class Amesh(object):
 
         if changed:
             new_fib = Fib(self.wg_dev, self.node, self.node_table, 
-                          self.wg_prvkey_path, logger = self.logger)
+                          self.wg_prvkey_path, self.vrf, logger = self.logger)
             new_fib.update_diff(self.fib)
             self.fib = new_fib
 

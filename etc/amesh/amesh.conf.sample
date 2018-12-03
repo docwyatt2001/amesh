@@ -38,6 +38,8 @@ groups		= group1, group2
 # hosts as allowed-ips.
 #tracked_devices	= enp0s3, enp0s8
 
+#### vrf: VRF name to which wg devices, routes, and dtracked devices belong
+#vrf		= vrf-x
 
 [wireguard]
 #

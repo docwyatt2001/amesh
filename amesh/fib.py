@@ -22,11 +22,12 @@ default_logger.propagate = False
 
 class Peer(object):
 
-    def __init__(self, wg_dev, node, outbound = False,
+    def __init__(self, wg_dev, node, vrf, outbound = False,
                  prvkey_path = None, logger = None):
         """
         Peer:
         @wg_dev: wireugard device name for this peer
+        @vrf: VRF to which wg dev of this peer belong
         @node: Node class for this peer
         @outbound: Peer for incomming connection or not
         @prvkey_path: private key path for egress wg device for this peer
@@ -35,6 +36,7 @@ class Peer(object):
 
         self.wg_dev = wg_dev
         self.outbound = outbound
+        self.vrf = vrf
 
         self.pubkey = node.pubkey
         self.endpoint = node.endpoint
@@ -90,6 +92,12 @@ class Peer(object):
                 [ WGCMD , "set", self.wg_dev, "private-key", self.prvkey_path ]
             ]
 
+        if self.vrf:
+            cmds += [
+                [ IPCMD, "link", "set", "dev", self.wg_dev,
+                  "master", self.vrf ]
+            ]
+
         wgcmd = [ WGCMD, "set", self.wg_dev, "peer", self.pubkey ]
         if self.endpoint:
             wgcmd += [ "endpoint", self.endpoint ]
@@ -133,9 +141,10 @@ class Peer(object):
 
 class Route(object):
 
-    def __init__(self, wg_dev, prefix, logger = None):
+    def __init__(self, wg_dev, prefix, vrf, logger = None):
         self.wg_devs = [ wg_dev ]
         self.prefix = str(prefix)
+        self.vrf = vrf
         self.logger = logger or default_logger
 
         self.removed = False
@@ -177,6 +186,9 @@ class Route(object):
 
         ipcmd = [ IPCMD, "route", "add", "to", self.prefix ]
 
+        if self.vrf:
+            ipcmd += [ "vrf", self.vrf ]
+
         for wg_dev in self.wg_devs:
             ipcmd += [ "nexthop", "dev", wg_dev ]
 
@@ -189,6 +201,8 @@ class Route(object):
     def uninstall(self):
 
         ipcmd = [ IPCMD, "route", "del", "to", self.prefix ]
+        if self.vrf:
+            ipcmd += [ "vrf", self.vrf ]
 
         try:
             subprocess.check_call(ipcmd)
@@ -200,7 +214,7 @@ class Route(object):
 
 class Fib(object):
 
-    def __init__(self, wg_dev, self_node, node_table, prvkey_path,
+    def __init__(self, wg_dev, self_node, node_table, prvkey_path, vrf,
                  logger = None):
         """
         Fib:
@@ -208,10 +222,12 @@ class Fib(object):
         @self_node: Node describing self (check my groups and ednpoints)
         @node_table: dict of Node instances
         @prvkey_path: wireguard private key path
+        @vrf: VRF to which wg and router belong
         """
 
         self.wg_dev = wg_dev
         self.groups = self_node.groups
+        self.vrf = vrf
         self.peers = set()
         self.routes = set()
         self.routes_dict = {}
@@ -242,14 +258,15 @@ class Fib(object):
             # Peer for outbound connection if the node is a server
             if node.endpoint:
                 wg_dev = "wg-{}".format(node.pubkey)[:13]
-                self.peers.add(Peer(wg_dev, node,
+                self.peers.add(Peer(wg_dev, node, self.vrf,
                                     outbound = True,
                                     prvkey_path = self.prvkey_path,
                                     logger = self.logger))
 
             # Peer for incoming connection because i am a server
             if self_node.endpoint:
-                self.peers.add(Peer(self.wg_dev, node, logger = self.logger))
+                self.peers.add(Peer(self.wg_dev, node, self.vrf,
+                                    logger = self.logger))
 
             #  routing table entries
             for allowed_ip in node.allowed_ips:
@@ -260,7 +277,8 @@ class Fib(object):
                 if allowed_ip in self.routes_dict:
                     self.routes_dict[allowed_ip].append_nexthop_dev(wg_dev)
                 else:
-                    route = Route(wg_dev, allowed_ip, logger = self.logger)
+                    route = Route(wg_dev, allowed_ip, self.vrf,
+                                  logger = self.logger)
                     self.routes.add(route)
                     self.routes_dict[allowed_ip] = route
 
