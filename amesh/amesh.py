@@ -51,16 +51,16 @@ class Amesh(object):
 
 
         ## etcd parameters
-        self.etcd_endpoint = cnf["amesh"]["etcd_endpoint"]
-        self.etcd_prefix = cnf["amesh"]["etcd_prefix"]
+        self.etcd_endpoint = cnf["etcd"]["etcd_endpoint"]
+        self.etcd_prefix = cnf["etcd"]["etcd_prefix"]
 
-        if  "etcd_username" in cnf["amesh"]:
-            self.etcd_username = cnf["amesh"]["etcd_username"]
+        if  "etcd_username" in cnf["etcd"]:
+            self.etcd_username = cnf["etcd"]["etcd_username"]
         else:
             self.etcd_username = None
 
-        if  "etcd_password" in cnf["amesh"]:
-            self.etcd_password = cnf["amesh"]["etcd_password"]
+        if  "etcd_password" in cnf["etcd"]:
+            self.etcd_password = cnf["etcd"]["etcd_password"]
         else:
             self.etcd_password = None
             

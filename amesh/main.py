@@ -45,11 +45,13 @@ def main():
 
     config = configparser.ConfigParser()
     config.readfp(args.config)
+    etcd_config = dict((config.items()))["etcd"]
     amesh_config = dict(config.items())["amesh"]
     wg_config = dict(config.items())["wireguard"]
 
     # Start Ameseh
     amesh_process = amesh.Amesh({
+        "etcd": etcd_config,
         "amesh": amesh_config,
         "wireguard": wg_config
     }, logger = logger)

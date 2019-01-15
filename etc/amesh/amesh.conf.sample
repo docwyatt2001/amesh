@@ -2,17 +2,11 @@
 # A Wireguard Mesh (amesh) config file
 #
 
-[amesh]
-#
-# Amesh configruations
-#
+[etcd]
 
-#### node_id: node ID of this amesh node
 #
-# node_id is a unique identifier each amesh node has. If node_id is
-# not configured, amesh uses UUID generated from its public key.
-node_id		= amesh-node1
-
+# etcd configuration
+#
 #### etcd_endpoint: etcd endpoint URL.
 etcd_endpoint	= 127.0.0.1:2379
 
@@ -25,6 +19,17 @@ etcd_prefix	= /amesh
 #### etcd_password: password for etcd authentication (optional)
 #etcd_password  = etcd_pass
 
+
+[amesh]
+
+# amesh configuration
+#
+#
+#### node_id: node ID of this amesh node
+#
+# node_id is a unique identifier each amesh node has. If node_id is
+# not configured, amesh uses UUID generated from its public key.
+node_id		= amesh-node1
 
 #### groups
 #
